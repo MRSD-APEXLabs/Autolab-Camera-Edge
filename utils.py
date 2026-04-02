@@ -96,6 +96,33 @@ def best_obb_from_results(results):
     return u, v, w, h, theta, conf, cls_id
 
 
+def all_obb_detections(results):
+    r0 = results[0]
+    if r0.obb is None or len(r0.obb) == 0:
+        return []
+
+    xywhr = r0.obb.xywhr.detach().cpu().numpy()
+    confs = r0.obb.conf.detach().cpu().numpy()
+    cls_ids = r0.obb.cls.detach().cpu().numpy() if r0.obb.cls is not None else np.full(len(confs), -1)
+    names = getattr(r0, "names", {})
+
+    dets = []
+    for i in range(len(confs)):
+        x, y, w, h, theta = map(float, xywhr[i])
+        cls_id = int(cls_ids[i])
+        dets.append(
+            {
+                "center": [x, y],
+                "size": [w, h],
+                "theta": theta,
+                "conf": float(confs[i]),
+                "cls_id": cls_id,
+                "name": str(names.get(cls_id, cls_id)),
+            }
+        )
+    return dets
+
+
 def image_ibvs_command(obb, target_uv, desired_area=None, desired_theta=0.0):
     u, v, w, h, theta, conf, cls_id = obb
     ut, vt = target_uv
@@ -115,19 +142,21 @@ def image_ibvs_command(obb, target_uv, desired_area=None, desired_theta=0.0):
     kz = 0.8
     kw = 1.0
 
-    Vc = np.array(
-        [
-            kx * ex,
-            -ky * ey,
-            0.25 * ez,
-            0.0,
-            0.0,
-            -kw * etheta,
-        ],
-        dtype=np.float64,
-    )
-
+    Vc = np.array([kx * ex, -ky * ey, 0.25 * ez, 0.0, 0.0, -kw * etheta], dtype=np.float64)
     return Vc, (u, v, w, h, theta, conf, cls_id)
+
+
+def encode_jpeg_b64(frame: np.ndarray, quality: int = 80) -> str:
+    ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+    if not ok:
+        raise RuntimeError("Failed to JPEG-encode frame")
+    return base64.b64encode(buf.tobytes()).decode("ascii")
+
+
+def encode_zlib_b64(arr: np.ndarray) -> Tuple[str, List[int], str]:
+    arr = np.asarray(arr)
+    payload = zlib.compress(arr.tobytes(), level=6)
+    return base64.b64encode(payload).decode("ascii"), list(arr.shape), str(arr.dtype)
 
 
 # =============================================================================
@@ -167,49 +196,3 @@ def gripper_close(arm):
         print("Error closing gripper, clearing errors...")
         clear_errors(arm)
 
-
-def encode_jpeg_b64(frame: np.ndarray, quality: int = 80) -> str:
-    ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
-    if not ok:
-        raise RuntimeError("Failed to JPEG-encode frame")
-    return base64.b64encode(buf.tobytes()).decode("ascii")
-
-
-def encode_zlib_b64(arr: np.ndarray) -> Tuple[str, List[int], str]:
-    arr = np.asarray(arr)
-    payload = zlib.compress(arr.tobytes(), level=6)
-    return base64.b64encode(payload).decode("ascii"), list(arr.shape), str(arr.dtype)
-
-
-def all_obb_detections(results):
-    """Return all OBB detections as JSON-friendly dictionaries."""
-    r0 = results[0]
-    if r0.obb is None or len(r0.obb) == 0:
-        return []
-
-    xywhr = r0.obb.xywhr.detach().cpu().numpy()
-    confs = r0.obb.conf.detach().cpu().numpy()
-    cls_ids = r0.obb.cls.detach().cpu().numpy() if r0.obb.cls is not None else np.full(len(confs), -1)
-    names = getattr(r0, "names", {})
-
-    dets = []
-    for i in range(len(confs)):
-        x, y, w, h, theta = map(float, xywhr[i])
-        cls_id = int(cls_ids[i])
-        dets.append(
-            {
-                "center": [x, y],
-                "size": [w, h],
-                "theta": theta,
-                "conf": float(confs[i]),
-                "cls_id": cls_id,
-                "name": str(names.get(cls_id, cls_id)),
-            }
-        )
-    return dets
-
-
-def restart_zed_daemon():
-    print("[RECOVERY] Restarting zed_x_daemon...")
-    subprocess.run(["sudo", "systemctl", "restart", "zed_x_daemon"])
-    time.sleep(10)  # give daemon time to start

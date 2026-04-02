@@ -18,6 +18,7 @@ from utils import *
 from config import *
 from streamhub import StreamHub
 
+
 # =============================================================================
 # Worker A: visual servo + camera streaming
 # =============================================================================
@@ -66,18 +67,19 @@ class ZEDYOLOServo(CameraWorker):
         dummy = np.zeros((600, 800, 3), dtype=np.uint8)
         for _ in range(3):
             _ = self.model(dummy, verbose=False)
+        
+        if not self.debug:
+            self.arm = XArmAPI(ip)
+            self.arm.connect()
+            if not self.arm.connected:
+                raise RuntimeError(f"Failed to connect to xArm at {ip}")
 
-        self.arm = XArmAPI(ip)
-        self.arm.connect()
-        if not self.arm.connected:
-            raise RuntimeError(f"Failed to connect to xArm at {ip}")
+            self.arm.motion_enable(True)
+            self.arm.set_mode(0)
+            self.arm.set_state(0)
 
-        self.arm.motion_enable(True)
-        self.arm.set_mode(0)
-        self.arm.set_state(0)
-
-        setup_gripper(self.arm)
-        gripper_open(self.arm)
+            setup_gripper(self.arm)
+            gripper_open(self.arm)
 
     def cleanup(self):
         try:
@@ -103,6 +105,8 @@ class ZEDYOLOServo(CameraWorker):
             pass
 
     def execute_threshold_motion(self):
+        if self.debug:
+            return
         self.stop_robot()
         self.arm.motion_enable(True)
         self.arm.set_mode(0)
@@ -131,7 +135,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 52,
             z=z,
             roll=roll,
             pitch=pitch,
@@ -144,7 +148,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 52,
             z=-52.7,
             roll=roll,
             pitch=pitch,
@@ -160,7 +164,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 52,
             z=0,
             roll=roll,
             pitch=pitch,
@@ -268,7 +272,6 @@ class ZEDYOLOServo(CameraWorker):
             print(f"[WARN] stop_robot failed: {e}")
 
     def run(self):
-        print("Doo")
         try:
             self.move_to_start_pose()
             self.enable_cartesian_velocity_mode()
@@ -377,11 +380,8 @@ class ZEDYOLOServo(CameraWorker):
                 # if key == 27:
                 #     break
 
-        except Exception as e:
-            print(e)
+        except BaseException as e:
             self.exc = e
             raise
         finally:
             self.cleanup()
-
-

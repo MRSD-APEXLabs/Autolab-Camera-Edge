@@ -18,6 +18,9 @@ from utils import *
 from config import *
 
 
+# =============================================================================
+# Stream hub
+# =============================================================================
 
 class StreamHub:
     """Thread-safe latest-frame store for both modes."""
@@ -53,27 +56,3 @@ class StreamHub:
             if self._latest[channel] is None:
                 return self._seq[channel], None
             return self._seq[channel], dict(self._latest[channel])
-
-
-# class StreamHub:
-#     """Thread-safe latest-frame store shared between the inspect worker and websocket server."""
-
-#     def __init__(self):
-#         self._lock = threading.Lock()
-#         self._seq = 0
-#         self._latest: Optional[Dict[str, Any]] = None
-
-#     def publish(self, payload: Dict[str, Any]):
-#         with self._lock:
-#             self._seq += 1
-#             payload = dict(payload)
-#             payload["frame_id"] = self._seq
-#             payload["timestamp"] = time.time()
-#             self._latest = payload
-
-#     def snapshot(self) -> Tuple[int, Optional[Dict[str, Any]]]:
-#         with self._lock:
-#             if self._latest is None:
-#                 return self._seq, None
-#             return self._seq, dict(self._latest)
-
