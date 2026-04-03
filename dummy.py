@@ -70,12 +70,12 @@ import apriltag
 
 DEBUG = True
 
-SERIAL_CAM1 = "40128964"   # visual servo camera
-SERIAL_CAM2 = "42757821"   # inspect camera (video + pointcloud + apriltags + 2nd YOLO)
+SERIAL_CAM1 = "40128964"  # visual servo camera
+SERIAL_CAM2 = "42757821"  # inspect camera (video + pointcloud + apriltags + 2nd YOLO)
 ARM_IP = "192.168.1.236"
 
 MODEL_SERVO = "models/best_wrist.pt"
-MODEL_INSPECT = "models/best_top.pt"   # set your second model path here
+MODEL_INSPECT = "models/best_top.pt"  # set your second model path here
 
 CONTROL_PORT = 8765
 STREAM_PORT = 8766
@@ -92,6 +92,7 @@ STREAM_HZ = 15.0
 # Utility functions
 # =============================================================================
 
+
 def wrap_angle_pi(a: float) -> float:
     return (a + np.pi) % (2.0 * np.pi) - np.pi
 
@@ -104,7 +105,9 @@ def draw_crosshair(img, uv, size=12, color=(0, 255, 255), thickness=2):
     return img
 
 
-def draw_velocity_arrow(img, center_uv, Vc, scale=600.0, color=(0, 0, 255), thickness=3):
+def draw_velocity_arrow(
+    img, center_uv, Vc, scale=600.0, color=(0, 0, 255), thickness=3
+):
     u, v = center_uv
     du = int(scale * Vc[1])
     dv = int(-scale * Vc[0])
@@ -153,7 +156,9 @@ def best_obb_from_results(results):
     idx = int(np.argmax(confs))
 
     xywhr = r0.obb.xywhr.detach().cpu().numpy()[idx]
-    cls_id = int(r0.obb.cls.detach().cpu().numpy()[idx]) if r0.obb.cls is not None else -1
+    cls_id = (
+        int(r0.obb.cls.detach().cpu().numpy()[idx]) if r0.obb.cls is not None else -1
+    )
     conf = float(confs[idx])
 
     u = float(xywhr[0])
@@ -172,7 +177,11 @@ def all_obb_detections(results):
 
     xywhr = r0.obb.xywhr.detach().cpu().numpy()
     confs = r0.obb.conf.detach().cpu().numpy()
-    cls_ids = r0.obb.cls.detach().cpu().numpy() if r0.obb.cls is not None else np.full(len(confs), -1)
+    cls_ids = (
+        r0.obb.cls.detach().cpu().numpy()
+        if r0.obb.cls is not None
+        else np.full(len(confs), -1)
+    )
     names = getattr(r0, "names", {})
 
     dets = []
@@ -211,7 +220,9 @@ def image_ibvs_command(obb, target_uv, desired_area=None, desired_theta=0.0):
     kz = 0.8
     kw = 1.0
 
-    Vc = np.array([kx * ex, -ky * ey, 0.25 * ez, 0.0, 0.0, -kw * etheta], dtype=np.float64)
+    Vc = np.array(
+        [kx * ex, -ky * ey, 0.25 * ez, 0.0, 0.0, -kw * etheta], dtype=np.float64
+    )
     return Vc, (u, v, w, h, theta, conf, cls_id)
 
 
@@ -231,6 +242,7 @@ def encode_zlib_b64(arr: np.ndarray) -> Tuple[str, List[int], str]:
 # =============================================================================
 # xArm helper functions
 # =============================================================================
+
 
 def clear_errors(arm):
     arm.clean_error()
@@ -270,13 +282,17 @@ def gripper_close(arm):
 # Stream hub
 # =============================================================================
 
+
 class StreamHub:
     """Thread-safe latest-frame store for both modes."""
 
     def __init__(self):
         self._lock = threading.Lock()
         self._seq = {"servo": 0, "inspect": 0}
-        self._latest: Dict[str, Optional[Dict[str, Any]]] = {"servo": None, "inspect": None}
+        self._latest: Dict[str, Optional[Dict[str, Any]]] = {
+            "servo": None,
+            "inspect": None,
+        }
         self._active_mode = "idle"
 
     def set_active_mode(self, mode: str):
@@ -310,6 +326,7 @@ class StreamHub:
 # Base worker
 # =============================================================================
 
+
 class CameraWorker(threading.Thread):
     def __init__(self, name: str, serial: str):
         super().__init__(daemon=True)
@@ -332,8 +349,11 @@ class CameraWorker(threading.Thread):
 # Worker A: visual servo + camera streaming
 # =============================================================================
 
+
 class ZEDYOLOServo(CameraWorker):
-    def __init__(self, ip: str, serial: str, stream_hub: StreamHub, debug: bool = False):
+    def __init__(
+        self, ip: str, serial: str, stream_hub: StreamHub, debug: bool = False
+    ):
         super().__init__("servo", serial)
         self.ip = ip
         self.debug = debug
@@ -376,7 +396,7 @@ class ZEDYOLOServo(CameraWorker):
         dummy = np.zeros((600, 800, 3), dtype=np.uint8)
         for _ in range(3):
             _ = self.model(dummy, verbose=False)
-        
+
         if not self.debug:
             self.arm = XArmAPI(ip)
             self.arm.connect()
@@ -563,7 +583,9 @@ class ZEDYOLOServo(CameraWorker):
             duration=0,
         )
         if code != 0:
-            raise RuntimeError(f"xArm vc_set_cartesian_velocity failed with code {code}")
+            raise RuntimeError(
+                f"xArm vc_set_cartesian_velocity failed with code {code}"
+            )
 
     def stop_robot(self):
         if self.debug:
@@ -622,7 +644,15 @@ class ZEDYOLOServo(CameraWorker):
 
                     if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
                         self.threshold_action_done = True
-                        cv2.putText(frame, f"threshold reached: area={area:.0f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+                        cv2.putText(
+                            frame,
+                            f"threshold reached: area={area:.0f}",
+                            (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 0, 255),
+                            2,
+                        )
                         # cv2.imshow("visual_servoing_right", frame)
                         cv2.waitKey(1)
                         self.execute_threshold_motion()
@@ -647,18 +677,48 @@ class ZEDYOLOServo(CameraWorker):
                     Vg[1] = np.clip(Vg[1], -0.01, 0.01)
                     Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
 
-                    print(f"clamped Vg: vx={Vg[0]:+.3f}, vy={Vg[1]:+.3f}, vz={Vg[2]:+.3f}")
+                    print(
+                        f"clamped Vg: vx={Vg[0]:+.3f}, vy={Vg[1]:+.3f}, vz={Vg[2]:+.3f}"
+                    )
                     self.send_velocity_to_robot(Vg)
 
-                    draw_crosshair(frame, target_uv, size=16, color=(0, 255, 255), thickness=2)
-                    cv2.putText(frame, "gripper target", (int(target_uv[0]) + 18, int(target_uv[1]) - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                    draw_crosshair(
+                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                    )
+                    cv2.putText(
+                        frame,
+                        "gripper target",
+                        (int(target_uv[0]) + 18, int(target_uv[1]) - 18),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
                     cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
                     frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
-                    cv2.putText(frame, f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+                    cv2.putText(
+                        frame,
+                        f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}",
+                        (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (0, 255, 0),
+                        2,
+                    )
                 else:
                     self.stop_robot()
-                    draw_crosshair(frame, target_uv, size=16, color=(0, 255, 255), thickness=2)
-                    cv2.putText(frame, "no detection", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+                    draw_crosshair(
+                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                    )
+                    cv2.putText(
+                        frame,
+                        "no detection",
+                        (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (0, 0, 255),
+                        2,
+                    )
 
                 t3 = time.time()
                 fps = 1.0 / max((t3 - prev_time), 1e-6)
@@ -700,6 +760,7 @@ class ZEDYOLOServo(CameraWorker):
 # Worker B: inspect mode (video + pointcloud + apriltags + second YOLO)
 # =============================================================================
 
+
 class ZEDInspectWorker(CameraWorker):
     def __init__(self, serial: str, stream_hub: StreamHub, debug: bool = False):
         super().__init__("inspect", serial)
@@ -713,7 +774,9 @@ class ZEDInspectWorker(CameraWorker):
 
         self.model = YOLO(MODEL_INSPECT)
         self.model.to("cuda")
-        self.apriltag_detector = apriltag.Detector(apriltag.DetectorOptions(families="tag16h5"))
+        self.apriltag_detector = apriltag.Detector(
+            apriltag.DetectorOptions(families="tag16h5")
+        )
 
         init = sl.InitParameters()
         init.set_from_serial_number(serial)
@@ -736,7 +799,7 @@ class ZEDInspectWorker(CameraWorker):
         self.cy = float(calib.cy)
 
         # Adjust these to match your real hardware
-        self.apriltag_size_m = 0.0725   # tag side length in meters
+        self.apriltag_size_m = 0.0725  # tag side length in meters
         self.wellplate_size_m = np.array([0.12776, 0.08548, 0.015], dtype=np.float64)
 
         dummy = np.zeros((600, 800, 3), dtype=np.uint8)
@@ -777,7 +840,9 @@ class ZEDInspectWorker(CameraWorker):
             return None
         return float(np.median(patch))
 
-    def _sample_points_in_box(self, depth_img, cx: float, cy: float, w: float, h: float, step: int = 4):
+    def _sample_points_in_box(
+        self, depth_img, cx: float, cy: float, w: float, h: float, step: int = 4
+    ):
         h_img, w_img = depth_img.shape[:2]
         x0 = max(0, int(cx - w / 2))
         x1 = min(w_img - 1, int(cx + w / 2))
@@ -853,7 +918,9 @@ class ZEDInspectWorker(CameraWorker):
 
         # Fallback to center depth if the patch is sparse
         center_d = self._depth_at(depth_img, cx, cy, half_window=3)
-        center_3d = self._depth_to_3d(cx, cy, center_d) if center_d is not None else None
+        center_3d = (
+            self._depth_to_3d(cx, cy, center_d) if center_d is not None else None
+        )
 
         if pts is None or len(pts) < 20:
             if center_3d is None:
@@ -866,8 +933,8 @@ class ZEDInspectWorker(CameraWorker):
             R = np.array(
                 [
                     [cyaw, -syaw, 0.0],
-                    [syaw,  cyaw, 0.0],
-                    [0.0,   0.0,   1.0],
+                    [syaw, cyaw, 0.0],
+                    [0.0, 0.0, 1.0],
                 ],
                 dtype=np.float64,
             )
@@ -891,8 +958,12 @@ class ZEDInspectWorker(CameraWorker):
         # Derive an in-plane x-axis from the 2D OBB angle
         dir_img = np.array([np.cos(theta), np.sin(theta)], dtype=np.float64)
         du = max(8.0, 0.25 * max(w, h))
-        p1_d = self._depth_at(depth_img, cx - du * dir_img[0], cy - du * dir_img[1], half_window=2)
-        p2_d = self._depth_at(depth_img, cx + du * dir_img[0], cy + du * dir_img[1], half_window=2)
+        p1_d = self._depth_at(
+            depth_img, cx - du * dir_img[0], cy - du * dir_img[1], half_window=2
+        )
+        p2_d = self._depth_at(
+            depth_img, cx + du * dir_img[0], cy + du * dir_img[1], half_window=2
+        )
 
         x_axis = None
         if p1_d is not None and p2_d is not None:
@@ -954,9 +1025,9 @@ class ZEDInspectWorker(CameraWorker):
         obj_pts = np.array(
             [
                 [-s / 2.0, -s / 2.0, 0.0],
-                [ s / 2.0, -s / 2.0, 0.0],
-                [ s / 2.0,  s / 2.0, 0.0],
-                [-s / 2.0,  s / 2.0, 0.0],
+                [s / 2.0, -s / 2.0, 0.0],
+                [s / 2.0, s / 2.0, 0.0],
+                [-s / 2.0, s / 2.0, 0.0],
             ],
             dtype=np.float32,
         )
@@ -996,7 +1067,7 @@ class ZEDInspectWorker(CameraWorker):
 
         tag_payload = []
         for r in results:
-            if r.tag_id not in (2,13):
+            if r.tag_id not in (2, 13):
                 continue
             corners = np.array(r.corners, dtype=np.float64)
 
@@ -1017,7 +1088,11 @@ class ZEDInspectWorker(CameraWorker):
             # fallback if solvePnP fails
             if pose is None:
                 d = self._depth_at(depth_img, r.center[0], r.center[1], half_window=3)
-                p = self._depth_to_3d(r.center[0], r.center[1], d) if d is not None else None
+                p = (
+                    self._depth_to_3d(r.center[0], r.center[1], d)
+                    if d is not None
+                    else None
+                )
                 if p is not None:
                     pose = {
                         "position": [float(p[0]), float(p[1]), float(p[2])],
@@ -1091,7 +1166,11 @@ class ZEDInspectWorker(CameraWorker):
 
                 self.camera.retrieve_measure(self.pc_mat, sl.MEASURE.XYZRGBA)
                 pc = self.pc_mat.get_data().reshape(-1, 4).astype(np.float32)
-                valid = np.isfinite(pc[:, 0]) & np.isfinite(pc[:, 1]) & np.isfinite(pc[:, 2])
+                valid = (
+                    np.isfinite(pc[:, 0])
+                    & np.isfinite(pc[:, 1])
+                    & np.isfinite(pc[:, 2])
+                )
                 pc = pc[valid]
                 if POINTCLOUD_STRIDE > 1 and len(pc) > 0:
                     pc = pc[::POINTCLOUD_STRIDE]
@@ -1121,11 +1200,12 @@ class ZEDInspectWorker(CameraWorker):
             raise
         finally:
             self.cleanup()
-            
-            
+
+
 # =============================================================================
 # Mode manager
 # =============================================================================
+
 
 class ModeManager:
     def __init__(self, arm_ip: str, stream_hub: StreamHub, debug: bool = False):
@@ -1162,10 +1242,17 @@ class ModeManager:
             self._stop_worker_locked()
 
             if mode == "servo":
-                self.worker = ZEDYOLOServo(self.arm_ip, SERIAL_CAM1, stream_hub=self.stream_hub, debug=self.debug)
+                self.worker = ZEDYOLOServo(
+                    self.arm_ip,
+                    SERIAL_CAM1,
+                    stream_hub=self.stream_hub,
+                    debug=self.debug,
+                )
                 self.worker.start()
             elif mode == "inspect":
-                self.worker = ZEDInspectWorker(SERIAL_CAM2, stream_hub=self.stream_hub, debug=self.debug)
+                self.worker = ZEDInspectWorker(
+                    SERIAL_CAM2, stream_hub=self.stream_hub, debug=self.debug
+                )
                 self.worker.start()
             else:
                 self.worker = None
@@ -1213,7 +1300,9 @@ async def control_handler(ws, *args):
                 elif cmd == "status":
                     await ws.send(json.dumps({"ok": True, **MANAGER.status()}))
                 else:
-                    await ws.send(json.dumps({"ok": False, "error": f"unknown cmd: {cmd}"}))
+                    await ws.send(
+                        json.dumps({"ok": False, "error": f"unknown cmd: {cmd}"})
+                    )
             except Exception as e:
                 await ws.send(json.dumps({"ok": False, "error": str(e)}))
 
@@ -1235,7 +1324,15 @@ async def stream_handler(ws, *args):
                 seq, payload = -1, None
 
             if payload is None:
-                await ws.send(json.dumps({"type": "idle", "mode": mode, "message": "waiting for active mode"}))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "idle",
+                            "mode": mode,
+                            "message": "waiting for active mode",
+                        }
+                    )
+                )
             elif seq != last_seq:
                 out = dict(payload)
                 out["mode"] = mode
@@ -1251,13 +1348,19 @@ async def main_async():
     global MANAGER
     MANAGER = ModeManager(ARM_IP, stream_hub=STREAM_HUB, debug=DEBUG)
 
-    control_server = websockets.serve(control_handler, "0.0.0.0", CONTROL_PORT, max_size=None)
-    stream_server = websockets.serve(stream_handler, "0.0.0.0", STREAM_PORT, max_size=None)
+    control_server = websockets.serve(
+        control_handler, "0.0.0.0", CONTROL_PORT, max_size=None
+    )
+    stream_server = websockets.serve(
+        stream_handler, "0.0.0.0", STREAM_PORT, max_size=None
+    )
 
     async with control_server, stream_server:
         print(f"Control server: ws://0.0.0.0:{CONTROL_PORT}")
         print(f"Stream server:  ws://0.0.0.0:{STREAM_PORT}")
-        print('Commands: {"cmd":"mode","mode":"servo"|"inspect"|"idle"}, {"cmd":"status"}, {"cmd":"stop"}')
+        print(
+            'Commands: {"cmd":"mode","mode":"servo"|"inspect"|"idle"}, {"cmd":"status"}, {"cmd":"stop"}'
+        )
         await asyncio.Future()
 
 
