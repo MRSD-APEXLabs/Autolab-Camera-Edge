@@ -23,6 +23,7 @@ from config import *
 # Utility functions
 # =============================================================================
 
+
 def wrap_angle_pi(a: float) -> float:
     return (a + np.pi) % (2.0 * np.pi) - np.pi
 
@@ -35,7 +36,9 @@ def draw_crosshair(img, uv, size=12, color=(0, 255, 255), thickness=2):
     return img
 
 
-def draw_velocity_arrow(img, center_uv, Vc, scale=600.0, color=(0, 0, 255), thickness=3):
+def draw_velocity_arrow(
+    img, center_uv, Vc, scale=600.0, color=(0, 0, 255), thickness=3
+):
     u, v = center_uv
     du = int(scale * Vc[1])
     dv = int(-scale * Vc[0])
@@ -84,7 +87,9 @@ def best_obb_from_results(results):
     idx = int(np.argmax(confs))
 
     xywhr = r0.obb.xywhr.detach().cpu().numpy()[idx]
-    cls_id = int(r0.obb.cls.detach().cpu().numpy()[idx]) if r0.obb.cls is not None else -1
+    cls_id = (
+        int(r0.obb.cls.detach().cpu().numpy()[idx]) if r0.obb.cls is not None else -1
+    )
     conf = float(confs[idx])
 
     u = float(xywhr[0])
@@ -133,6 +138,7 @@ def image_ibvs_command(obb, target_uv, desired_area=None, desired_theta=0.0):
 # =============================================================================
 # xArm helper functions
 # =============================================================================
+
 
 def clear_errors(arm):
     arm.clean_error()
@@ -189,7 +195,11 @@ def all_obb_detections(results):
 
     xywhr = r0.obb.xywhr.detach().cpu().numpy()
     confs = r0.obb.conf.detach().cpu().numpy()
-    cls_ids = r0.obb.cls.detach().cpu().numpy() if r0.obb.cls is not None else np.full(len(confs), -1)
+    cls_ids = (
+        r0.obb.cls.detach().cpu().numpy()
+        if r0.obb.cls is not None
+        else np.full(len(confs), -1)
+    )
     names = getattr(r0, "names", {})
 
     dets = []
