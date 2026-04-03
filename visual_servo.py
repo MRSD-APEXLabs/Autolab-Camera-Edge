@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 
@@ -5,12 +6,13 @@ import cv2
 import numpy as np
 import pyzed.sl as sl
 from ultralytics import YOLO
-from xarm.wrapper import XArmAPI
 
 from cam_worker import CameraWorker
 from utils import *
 from config import *
 from streamhub import StreamHub
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Worker A: visual servo + camera streaming
@@ -53,17 +55,20 @@ class ZEDYOLOServo(CameraWorker):
         for _ in range(3):
             _ = self.model(dummy, verbose=False)
 
-        self.arm = XArmAPI(ip)
-        self.arm.connect()
-        if not self.arm.connected:
-            raise RuntimeError(f"Failed to connect to xArm at {ip}")
-
-        self.arm.motion_enable(True)
-        self.arm.set_mode(0)
-        self.arm.set_state(0)
-
-        setup_gripper(self.arm)
-        gripper_open(self.arm)
+        if not debug:
+            from xarm.wrapper import XArmAPI
+            self.arm = XArmAPI(ip)
+            self.arm.connect()
+            if not self.arm.connected:
+                raise RuntimeError(f"Failed to connect to xArm at {ip}")
+            self.arm.motion_enable(True)
+            self.arm.set_mode(0)
+            self.arm.set_state(0)
+            setup_gripper(self.arm)
+            gripper_open(self.arm)
+        else:
+            self.arm = None
+            logger.info("[DEBUG] arm skipped — debug mode")
 
     def cleanup(self):
         try:
@@ -72,7 +77,7 @@ class ZEDYOLOServo(CameraWorker):
             pass
 
         try:
-            if not self.debug:
+            if self.arm is not None:
                 self.arm.set_mode(0)
                 self.arm.set_state(0)
         except Exception:
@@ -84,17 +89,17 @@ class ZEDYOLOServo(CameraWorker):
             pass
 
     def execute_threshold_motion(self):
+        if self.debug:
+            logger.info("[DEBUG] Threshold reached: would execute post-threshold motion")
+            return
+
         self.stop_robot()
         self.arm.motion_enable(True)
         self.arm.set_mode(0)
         self.arm.set_state(0)
         time.sleep(2)
 
-        if self.debug:
-            print("[DEBUG] Threshold reached: would execute post-threshold motion")
-            return
-
-        print("Threshold reached: executing post-threshold motion...")
+        logger.info("Threshold reached: executing post-threshold motion...")
 
         ret = self.arm.get_position(is_radian=False)
         if not isinstance(ret, tuple) or len(ret) < 2:
@@ -105,9 +110,9 @@ class ZEDYOLOServo(CameraWorker):
             raise RuntimeError(f"xArm get_position failed with code {code}")
 
         x, y, z, roll, pitch, yaw = pose[:6]
-        print(
-            f"Current pose: x={x:.1f} mm, y={y:.1f} mm, z={z:.1f} mm, "
-            f"roll={roll:.1f} deg, pitch={pitch:.1f} deg, yaw={yaw:.1f} deg"
+        logger.info(
+            "Current pose: x=%.1f mm, y=%.1f mm, z=%.1f mm, roll=%.1f deg, pitch=%.1f deg, yaw=%.1f deg",
+            x, y, z, roll, pitch, yaw,
         )
 
         code = self.arm.set_position(
@@ -169,9 +174,10 @@ class ZEDYOLOServo(CameraWorker):
 
     def move_to_start_pose(self):
         if self.debug:
-            print(
-                f"[DEBUG] Requested start pose: xyz_mm=({START_POS_MM[0]:.1f}, {START_POS_MM[1]:.1f}, {START_POS_MM[2]:.1f}), "
-                f"rpy_deg=({START_RPY_DEG[0]:.1f}, {START_RPY_DEG[1]:.1f}, {START_RPY_DEG[2]:.1f})"
+            logger.info(
+                "[DEBUG] Requested start pose: xyz_mm=(%.1f, %.1f, %.1f), rpy_deg=(%.1f, %.1f, %.1f)",
+                START_POS_MM[0], START_POS_MM[1], START_POS_MM[2],
+                START_RPY_DEG[0], START_RPY_DEG[1], START_RPY_DEG[2],
             )
             return
 
@@ -195,7 +201,7 @@ class ZEDYOLOServo(CameraWorker):
 
     def enable_cartesian_velocity_mode(self):
         if self.debug:
-            print("[DEBUG] switching to cartesian velocity mode")
+            logger.info("[DEBUG] switching to cartesian velocity mode")
             return
 
         self.arm.motion_enable(True)
@@ -218,9 +224,9 @@ class ZEDYOLOServo(CameraWorker):
         )
 
         if self.debug:
-            print(
-                f"[DEBUG] cmd cart vel: vx={cmd[0]:+.1f} mm/s, vy={cmd[1]:+.1f} mm/s, "
-                f"vz={cmd[2]:+.1f} mm/s, wx={cmd[3]:+.3f}, wy={cmd[4]:+.3f}, wz={cmd[5]:+.3f}"
+            logger.debug(
+                "[DEBUG] cmd cart vel: vx=%+.1f mm/s, vy=%+.1f mm/s, vz=%+.1f mm/s, wx=%+.3f, wy=%+.3f, wz=%+.3f",
+                cmd[0], cmd[1], cmd[2], cmd[3], cmd[4], cmd[5],
             )
             return
 
@@ -237,7 +243,7 @@ class ZEDYOLOServo(CameraWorker):
 
     def stop_robot(self):
         if self.debug:
-            print("[DEBUG] stop robot")
+            logger.debug("[DEBUG] stop robot")
             return
 
         try:
@@ -248,10 +254,10 @@ class ZEDYOLOServo(CameraWorker):
                 duration=0,
             )
         except Exception as e:
-            print(f"[WARN] stop_robot failed: {e}")
+            logger.warning("stop_robot failed: %s", e)
 
     def run(self):
-        print("Doo")
+        logger.info("servo worker starting")
         try:
             self.move_to_start_pose()
             self.enable_cartesian_velocity_mode()
@@ -328,9 +334,7 @@ class ZEDYOLOServo(CameraWorker):
                     Vg[1] = np.clip(Vg[1], -0.01, 0.01)
                     Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
 
-                    print(
-                        f"clamped Vg: vx={Vg[0]:+.3f}, vy={Vg[1]:+.3f}, vz={Vg[2]:+.3f}"
-                    )
+                    logger.debug("clamped Vg: vx=%+.3f, vy=%+.3f, vz=%+.3f", Vg[0], Vg[1], Vg[2])
                     self.send_velocity_to_robot(Vg)
 
                     draw_crosshair(
@@ -390,13 +394,13 @@ class ZEDYOLOServo(CameraWorker):
                     },
                 )
 
-                print(
-                    f"Capture: {(t1 - t0) * 1000.0:.2f} ms | Inference: {(t2 - t1) * 1000.0:.2f} ms | "
-                    f"Post: {(t3 - t2) * 1000.0:.2f} ms | FPS: {fps:.2f}"
+                logger.debug(
+                    "capture=%.1fms  inference=%.1fms  post=%.1fms  fps=%.1f",
+                    (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0, fps,
                 )
 
         except Exception as e:
-            print(e)
+            logger.exception("servo worker crashed: %s", e)
             self.exc = e
             raise
         finally:

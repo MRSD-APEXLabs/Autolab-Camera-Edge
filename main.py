@@ -24,6 +24,7 @@ A long-lived idle thread grabs raw images from both cameras continuously.
 
 import asyncio
 import json
+import logging
 import sys
 import threading
 from typing import Optional
@@ -290,20 +291,24 @@ async def main_async():
         raw_stream_handler, "0.0.0.0", RAW_STREAM_PORT, max_size=None
     )
 
+    log = logging.getLogger(__name__)
     async with control_server, stream_server, raw_server:
-        print(f"Control server:    ws://0.0.0.0:{CONTROL_PORT}")
-        print(f"Stream server:     ws://0.0.0.0:{STREAM_PORT}")
-        print(f"Raw stream server: ws://0.0.0.0:{RAW_STREAM_PORT}")
-        print(
-            'Commands: {"cmd":"mode","mode":"servo"|"inspect"|"idle"}, {"cmd":"status"}, {"cmd":"stop"}'
-        )
+        log.info("Control server:    ws://0.0.0.0:%d", CONTROL_PORT)
+        log.info("Stream server:     ws://0.0.0.0:%d", STREAM_PORT)
+        log.info("Raw stream server: ws://0.0.0.0:%d", RAW_STREAM_PORT)
         await asyncio.Future()
 
 
 def main():
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s  %(levelname)-8s  [%(threadName)s]  %(name)s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
     devices = sl.Camera.get_device_list()
     if not devices:
-        print("No ZED camera found")
+        logging.error("No ZED camera found")
         sys.exit(1)
 
     try:

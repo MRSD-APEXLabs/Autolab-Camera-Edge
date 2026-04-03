@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 
@@ -6,6 +7,8 @@ import pyzed.sl as sl
 
 from streamhub import StreamHub
 from utils import encode_jpeg_b64
+
+logger = logging.getLogger(__name__)
 
 
 class ZEDImageWorker(threading.Thread):
@@ -39,6 +42,7 @@ class ZEDImageWorker(threading.Thread):
         self.stop_event.set()
 
     def run(self):
+        logger.info("raw image worker starting (wrist + base)")
         while not self.stop_event.is_set():
             wrist_ok = False
             with self.wrist_lock:

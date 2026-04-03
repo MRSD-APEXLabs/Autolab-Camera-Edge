@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 
@@ -11,6 +12,8 @@ from cam_worker import CameraWorker
 from utils import *
 from config import *
 from streamhub import StreamHub
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Worker B: pointcloud + apriltags + second YOLO
@@ -69,6 +72,7 @@ class ZEDInspectWorker(CameraWorker):
         return frame, tag_payload
 
     def run(self):
+        logger.info("inspect worker starting")
         try:
             while not self.should_stop():
                 start = time.time()
@@ -145,8 +149,13 @@ class ZEDInspectWorker(CameraWorker):
                         "fps": float(fps),
                     },
                 )
+                logger.debug(
+                    "fps=%.1f  wellplates=%d  apriltags=%d  pts=%d",
+                    fps, len(dets), len(tags), len(pc),
+                )
 
         except BaseException as e:
+            logger.exception("inspect worker crashed: %s", e)
             self.exc = e
             raise
         finally:
