@@ -1,18 +1,12 @@
-import asyncio
-import json
-import sys
 import threading
 import time
-from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import cv2
 import numpy as np
 import pyzed.sl as sl
-import websockets
 from ultralytics import YOLO
 from xarm.wrapper import XArmAPI
-import apriltag
+
 from cam_worker import CameraWorker
 from utils import *
 from config import *
@@ -22,13 +16,15 @@ from streamhub import StreamHub
 # Worker A: visual servo + camera streaming
 # =============================================================================
 
+
 class ZEDYOLOServo(CameraWorker):
-    def __init__(self, ip: str, serial: str, stream_hub: StreamHub, debug: bool = False):
-        super().__init__("servo", serial)
+    def __init__(
+        self, ip: str, camera, grab_lock: threading.Lock, stream_hub: StreamHub, debug: bool = False
+    ):
+        super().__init__("servo", camera, grab_lock)
         self.ip = ip
         self.debug = debug
         self.stream_hub = stream_hub
-        self.camera = sl.Camera()
         self.runtime = sl.RuntimeParameters()
         self.view = sl.VIEW.RIGHT
         self.model = YOLO(MODEL_SERVO)
@@ -45,16 +41,6 @@ class ZEDYOLOServo(CameraWorker):
             dtype=np.float64,
         )
         self.Ad_g_c = se3_to_adj(self.T_g_cr)
-
-        init = sl.InitParameters()
-        init.set_from_serial_number(serial)
-        init.camera_resolution = sl.RESOLUTION.SVGA
-        init.camera_fps = 30
-        init.depth_mode = sl.DEPTH_MODE.NONE
-
-        err = self.camera.open(init)
-        if err != sl.ERROR_CODE.SUCCESS:
-            raise RuntimeError(f"Camera {serial} failed to open: {err}")
 
         cam_info = self.camera.get_camera_information()
         right_calib = cam_info.camera_configuration.calibration_parameters.right_cam
@@ -89,11 +75,6 @@ class ZEDYOLOServo(CameraWorker):
             if not self.debug:
                 self.arm.set_mode(0)
                 self.arm.set_state(0)
-        except Exception:
-            pass
-
-        try:
-            self.camera.close()
         except Exception:
             pass
 
@@ -250,7 +231,9 @@ class ZEDYOLOServo(CameraWorker):
             duration=0,
         )
         if code != 0:
-            raise RuntimeError(f"xArm vc_set_cartesian_velocity failed with code {code}")
+            raise RuntimeError(
+                f"xArm vc_set_cartesian_velocity failed with code {code}"
+            )
 
     def stop_robot(self):
         if self.debug:
@@ -277,14 +260,17 @@ class ZEDYOLOServo(CameraWorker):
             desired_area = None
 
             while not self.should_stop():
-                err = self.camera.grab(self.runtime)
+                right_frame = sl.Mat()
+                with self.grab_lock:
+                    err = self.camera.grab(self.runtime)
+                    if err == sl.ERROR_CODE.SUCCESS:
+                        self.camera.retrieve_image(right_frame, self.view)
+
                 if err != sl.ERROR_CODE.SUCCESS:
                     time.sleep(0.001)
                     continue
 
                 t0 = time.time()
-                right_frame = sl.Mat()
-                self.camera.retrieve_image(right_frame, self.view)
                 frame = cv2.cvtColor(right_frame.get_data(), cv2.COLOR_BGRA2BGR)
                 t1 = time.time()
 
@@ -310,8 +296,15 @@ class ZEDYOLOServo(CameraWorker):
 
                     if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
                         self.threshold_action_done = True
-                        cv2.putText(frame, f"threshold reached: area={area:.0f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
-                        # cv2.imshow("visual_servoing_right", frame)
+                        cv2.putText(
+                            frame,
+                            f"threshold reached: area={area:.0f}",
+                            (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 0, 255),
+                            2,
+                        )
                         cv2.waitKey(1)
                         self.execute_threshold_motion()
                         break
@@ -335,18 +328,48 @@ class ZEDYOLOServo(CameraWorker):
                     Vg[1] = np.clip(Vg[1], -0.01, 0.01)
                     Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
 
-                    print(f"clamped Vg: vx={Vg[0]:+.3f}, vy={Vg[1]:+.3f}, vz={Vg[2]:+.3f}")
+                    print(
+                        f"clamped Vg: vx={Vg[0]:+.3f}, vy={Vg[1]:+.3f}, vz={Vg[2]:+.3f}"
+                    )
                     self.send_velocity_to_robot(Vg)
 
-                    draw_crosshair(frame, target_uv, size=16, color=(0, 255, 255), thickness=2)
-                    cv2.putText(frame, "gripper target", (int(target_uv[0]) + 18, int(target_uv[1]) - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                    draw_crosshair(
+                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                    )
+                    cv2.putText(
+                        frame,
+                        "gripper target",
+                        (int(target_uv[0]) + 18, int(target_uv[1]) - 18),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
                     cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
                     frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
-                    cv2.putText(frame, f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+                    cv2.putText(
+                        frame,
+                        f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}",
+                        (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (0, 255, 0),
+                        2,
+                    )
                 else:
                     self.stop_robot()
-                    draw_crosshair(frame, target_uv, size=16, color=(0, 255, 255), thickness=2)
-                    cv2.putText(frame, "no detection", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+                    draw_crosshair(
+                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                    )
+                    cv2.putText(
+                        frame,
+                        "no detection",
+                        (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (0, 0, 255),
+                        2,
+                    )
 
                 t3 = time.time()
                 fps = 1.0 / max((t3 - prev_time), 1e-6)
@@ -372,16 +395,9 @@ class ZEDYOLOServo(CameraWorker):
                     f"Post: {(t3 - t2) * 1000.0:.2f} ms | FPS: {fps:.2f}"
                 )
 
-                # cv2.imshow("visual_servoing_right", frame)
-                # key = cv2.waitKey(1) & 0xFF
-                # if key == 27:
-                #     break
-
         except Exception as e:
             print(e)
             self.exc = e
             raise
         finally:
             self.cleanup()
-
-
