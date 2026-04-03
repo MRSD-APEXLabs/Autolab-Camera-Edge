@@ -3,45 +3,36 @@
 Unified Websocket server
 
 Mode A (servo):
-  - ZED camera 1
+  - ZED camera 1 (wrist)
   - YOLO OBB visual servo
   - xArm control
 
 Mode B (inspect):
-  - ZED camera 2
+  - ZED camera 2 (base)
   - second YOLO model
   - AprilTag detection
   - point cloud acquisition hook
 
-A websocket control server receives commands such as:
-  {"cmd": "mode", "mode": "servo"}
-  {"cmd": "mode", "mode": "inspect"}
-  {"cmd": "mode", "mode": "idle"}
-  {"cmd": "stop"}
+WebSocket servers:
+  - Control  (port 8765): mode switching and status
+  - Stream   (port 8766): active mode full pipeline feed
+  - Raw      (port 8767): raw image feed per camera (subscribe by name)
 
-Only one camera worker is active at a time. Switching modes stops the
-current worker, closes the camera, and starts the new one.
-
-This file keeps your existing processing logic intact and adds the
-resource-management layer needed to combine both scripts cleanly.
+Only one active worker runs at a time. Both cameras are always open.
+A long-lived idle thread grabs raw images from both cameras continuously.
 """
 
 import asyncio
 import json
 import sys
 import threading
-import time
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
-import cv2
-import numpy as np
 import pyzed.sl as sl
 import websockets
-from ultralytics import YOLO
-from xarm.wrapper import XArmAPI
-import apriltag
-from utils import *
+
+from cam_worker import CameraWorker
+from image_worker import ZEDImageWorker
 from inspect_cam import ZEDInspectWorker
 from visual_servo import ZEDYOLOServo
 from config import *
@@ -52,6 +43,7 @@ from streamhub import StreamHub
 # Mode manager
 # =============================================================================
 
+
 class ModeManager:
     def __init__(self, arm_ip: str, stream_hub: StreamHub, debug: bool = False):
         self.arm_ip = arm_ip
@@ -61,6 +53,42 @@ class ModeManager:
         self.current_mode = "idle"
         self.worker: Optional[CameraWorker] = None
 
+        # Open wrist camera (cam1, no depth)
+        self._wrist_cam = sl.Camera()
+        self._wrist_lock = threading.Lock()
+        wrist_init = sl.InitParameters()
+        wrist_init.set_from_serial_number(SERIAL_CAM1)
+        wrist_init.camera_resolution = sl.RESOLUTION.SVGA
+        wrist_init.camera_fps = 30
+        wrist_init.depth_mode = sl.DEPTH_MODE.NONE
+        err = self._wrist_cam.open(wrist_init)
+        if err != sl.ERROR_CODE.SUCCESS:
+            raise RuntimeError(f"Wrist camera {SERIAL_CAM1} failed to open: {err}")
+
+        # Open base camera (cam2, NEURAL depth)
+        self._base_cam = sl.Camera()
+        self._base_lock = threading.Lock()
+        base_init = sl.InitParameters()
+        base_init.set_from_serial_number(SERIAL_CAM2)
+        base_init.camera_resolution = sl.RESOLUTION.SVGA
+        base_init.camera_fps = 30
+        base_init.depth_mode = sl.DEPTH_MODE.NEURAL
+        base_init.coordinate_units = sl.UNIT.METER
+        base_init.depth_minimum_distance = 0.2
+        base_init.depth_maximum_distance = 1.7
+        err = self._base_cam.open(base_init)
+        if err != sl.ERROR_CODE.SUCCESS:
+            self._wrist_cam.close()
+            raise RuntimeError(f"Base camera {SERIAL_CAM2} failed to open: {err}")
+
+        # Start idle thread — runs for the lifetime of the process
+        self._idle_worker = ZEDImageWorker(
+            self._wrist_cam, self._wrist_lock,
+            self._base_cam, self._base_lock,
+            stream_hub=stream_hub,
+        )
+        self._idle_worker.start()
+
     def _stop_worker_locked(self):
         if self.worker is None:
             return
@@ -69,6 +97,7 @@ class ModeManager:
         self.worker = None
 
     def stop(self):
+        """Set mode to idle (stops active worker). Idle thread keeps running."""
         with self.lock:
             self._stop_worker_locked()
             self.current_mode = "idle"
@@ -87,10 +116,21 @@ class ModeManager:
             self._stop_worker_locked()
 
             if mode == "servo":
-                self.worker = ZEDYOLOServo(self.arm_ip, SERIAL_CAM1, stream_hub=self.stream_hub, debug=self.debug)
+                self.worker = ZEDYOLOServo(
+                    self.arm_ip,
+                    self._wrist_cam,
+                    self._wrist_lock,
+                    stream_hub=self.stream_hub,
+                    debug=self.debug,
+                )
                 self.worker.start()
             elif mode == "inspect":
-                self.worker = ZEDInspectWorker(SERIAL_CAM2, stream_hub=self.stream_hub, debug=self.debug)
+                self.worker = ZEDInspectWorker(
+                    self._base_cam,
+                    self._base_lock,
+                    stream_hub=self.stream_hub,
+                    debug=self.debug,
+                )
                 self.worker.start()
             else:
                 self.worker = None
@@ -104,9 +144,27 @@ class ModeManager:
             alive = bool(self.worker and self.worker.is_alive())
             return {"mode": self.current_mode, "worker_alive": alive}
 
+    def shutdown(self):
+        """Stop active worker, stop idle thread, close both cameras."""
+        with self.lock:
+            self._stop_worker_locked()
+            self.current_mode = "idle"
+
+        self._idle_worker.stop()
+        self._idle_worker.join(timeout=5.0)
+
+        try:
+            self._wrist_cam.close()
+        except Exception as e:
+            print(repr(e))
+        try:
+            self._base_cam.close()
+        except Exception as e:
+            print(repr(e))
+
 
 # =============================================================================
-# Websocket control server
+# WebSocket handlers
 # =============================================================================
 
 STREAM_SNAPSHOT_INTERVAL = 1.0 / STREAM_HZ
@@ -138,7 +196,9 @@ async def control_handler(ws, *args):
                 elif cmd == "status":
                     await ws.send(json.dumps({"ok": True, **MANAGER.status()}))
                 else:
-                    await ws.send(json.dumps({"ok": False, "error": f"unknown cmd: {cmd}"}))
+                    await ws.send(
+                        json.dumps({"ok": False, "error": f"unknown cmd: {cmd}"})
+                    )
             except Exception as e:
                 await ws.send(json.dumps({"ok": False, "error": str(e)}))
 
@@ -147,7 +207,7 @@ async def control_handler(ws, *args):
 
 
 async def stream_handler(ws, *args):
-    """Send the latest frame from whichever mode is active."""
+    """Send the latest full-pipeline frame from whichever mode is active."""
     try:
         last_seq = -1
         while True:
@@ -160,7 +220,15 @@ async def stream_handler(ws, *args):
                 seq, payload = -1, None
 
             if payload is None:
-                await ws.send(json.dumps({"type": "idle", "mode": mode, "message": "waiting for active mode"}))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "idle",
+                            "mode": mode,
+                            "message": "waiting for active mode",
+                        }
+                    )
+                )
             elif seq != last_seq:
                 out = dict(payload)
                 out["mode"] = mode
@@ -172,17 +240,63 @@ async def stream_handler(ws, *args):
         pass
 
 
+async def raw_stream_handler(ws, *args):
+    """Subscribe to a single camera's raw image feed.
+
+    Client sends: {"camera": "wrist"} or {"camera": "base"}
+    Server streams raw JPEG frames at STREAM_HZ.
+    """
+    try:
+        message = await asyncio.wait_for(ws.recv(), timeout=5.0)
+        data = json.loads(message)
+    except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+        await ws.send(json.dumps({"ok": False, "error": 'expected {"camera": "wrist"|"base"}'}))
+        return
+
+    camera = str(data.get("camera", "")).lower()
+    if camera not in {"wrist", "base"}:
+        await ws.send(json.dumps({"ok": False, "error": "camera must be 'wrist' or 'base'"}))
+        return
+
+    channel = f"{camera}_raw"
+    last_seq = -1
+
+    try:
+        while True:
+            seq, payload = STREAM_HUB.snapshot(channel)
+            if payload is not None and seq != last_seq:
+                await ws.send(json.dumps(payload))
+                last_seq = seq
+            await asyncio.sleep(STREAM_SNAPSHOT_INTERVAL)
+    except websockets.exceptions.ConnectionClosed:
+        pass
+
+
+# =============================================================================
+# Entry point
+# =============================================================================
+
 async def main_async():
     global MANAGER
     MANAGER = ModeManager(ARM_IP, stream_hub=STREAM_HUB, debug=DEBUG)
 
-    control_server = websockets.serve(control_handler, "0.0.0.0", CONTROL_PORT, max_size=None)
-    stream_server = websockets.serve(stream_handler, "0.0.0.0", STREAM_PORT, max_size=None)
+    control_server = websockets.serve(
+        control_handler, "0.0.0.0", CONTROL_PORT, max_size=None
+    )
+    stream_server = websockets.serve(
+        stream_handler, "0.0.0.0", STREAM_PORT, max_size=None
+    )
+    raw_server = websockets.serve(
+        raw_stream_handler, "0.0.0.0", RAW_STREAM_PORT, max_size=None
+    )
 
-    async with control_server, stream_server:
-        print(f"Control server: ws://0.0.0.0:{CONTROL_PORT}")
-        print(f"Stream server:  ws://0.0.0.0:{STREAM_PORT}")
-        print('Commands: {"cmd":"mode","mode":"servo"|"inspect"|"idle"}, {"cmd":"status"}, {"cmd":"stop"}')
+    async with control_server, stream_server, raw_server:
+        print(f"Control server:    ws://0.0.0.0:{CONTROL_PORT}")
+        print(f"Stream server:     ws://0.0.0.0:{STREAM_PORT}")
+        print(f"Raw stream server: ws://0.0.0.0:{RAW_STREAM_PORT}")
+        print(
+            'Commands: {"cmd":"mode","mode":"servo"|"inspect"|"idle"}, {"cmd":"status"}, {"cmd":"stop"}'
+        )
         await asyncio.Future()
 
 
@@ -199,7 +313,7 @@ def main():
     finally:
         try:
             if MANAGER is not None:
-                MANAGER.stop()
+                MANAGER.shutdown()
         except Exception:
             pass
 
