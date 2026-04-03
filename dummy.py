@@ -444,7 +444,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 52,
+            y=y - 54,
             z=z,
             roll=roll,
             pitch=pitch,
@@ -457,7 +457,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 52,
+            y=y - 54,
             z=-52.7,
             roll=roll,
             pitch=pitch,
@@ -473,7 +473,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 52,
+            y=y - 54,
             z=0,
             roll=roll,
             pitch=pitch,
