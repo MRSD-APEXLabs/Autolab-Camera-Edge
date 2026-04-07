@@ -54,6 +54,12 @@ class ZEDYOLOServo(CameraWorker):
         dummy = np.zeros((600, 800, 3), dtype=np.uint8)
         for _ in range(3):
             _ = self.model(dummy, verbose=False)
+        
+        if not self.debug:
+            self.arm = XArmAPI(ip)
+            self.arm.connect()
+            if not self.arm.connected:
+                raise RuntimeError(f"Failed to connect to xArm at {ip}")
 
         if not debug:
             from xarm.wrapper import XArmAPI
@@ -117,7 +123,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 52,
             z=z,
             roll=roll,
             pitch=pitch,
@@ -130,7 +136,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 52,
             z=-52.7,
             roll=roll,
             pitch=pitch,
@@ -146,7 +152,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 52,
             z=0,
             roll=roll,
             pitch=pitch,

@@ -2,6 +2,9 @@ import threading
 import time
 from typing import Any, Dict, Optional, Tuple
 
+# =============================================================================
+# Stream hub
+# =============================================================================
 
 class StreamHub:
     """Thread-safe latest-frame store for all streaming channels."""

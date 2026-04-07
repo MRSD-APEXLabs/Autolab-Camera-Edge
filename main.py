@@ -39,7 +39,6 @@ from visual_servo import ZEDYOLOServo
 from config import *
 from streamhub import StreamHub
 
-
 # =============================================================================
 # Mode manager
 # =============================================================================

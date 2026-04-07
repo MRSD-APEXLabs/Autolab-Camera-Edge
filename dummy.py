@@ -68,7 +68,7 @@ import apriltag
 # Configuration
 # =============================================================================
 
-DEBUG = True
+DEBUG = False
 
 SERIAL_CAM1 = "40128964"  # visual servo camera
 SERIAL_CAM2 = "42757821"  # inspect camera (video + pointcloud + apriltags + 2nd YOLO)
@@ -464,7 +464,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 54,
             z=z,
             roll=roll,
             pitch=pitch,
@@ -477,7 +477,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 54,
             z=-52.7,
             roll=roll,
             pitch=pitch,
@@ -493,7 +493,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 66.5,
+            y=y - 54,
             z=0,
             roll=roll,
             pitch=pitch,
