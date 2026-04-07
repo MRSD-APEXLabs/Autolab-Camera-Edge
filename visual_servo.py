@@ -259,6 +259,11 @@ class ZEDYOLOServo(CameraWorker):
     def run(self):
         logger.info("servo worker starting")
         try:
+            # Clear arm errors
+            self.arm.clean_error()
+            self.arm.clean_warn()
+            time.sleep(0.1)
+
             self.move_to_start_pose()
             self.enable_cartesian_velocity_mode()
 
