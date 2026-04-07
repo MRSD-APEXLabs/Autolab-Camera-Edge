@@ -23,6 +23,7 @@ from config import *
 # Utility functions
 # =============================================================================
 
+
 def wrap_angle_pi(a: float) -> float:
     return (a + np.pi) % (2.0 * np.pi) - np.pi
 
@@ -35,7 +36,9 @@ def draw_crosshair(img, uv, size=12, color=(0, 255, 255), thickness=2):
     return img
 
 
-def draw_velocity_arrow(img, center_uv, Vc, scale=600.0, color=(0, 0, 255), thickness=3):
+def draw_velocity_arrow(
+    img, center_uv, Vc, scale=600.0, color=(0, 0, 255), thickness=3
+):
     u, v = center_uv
     du = int(scale * Vc[1])
     dv = int(-scale * Vc[0])
@@ -84,7 +87,9 @@ def best_obb_from_results(results):
     idx = int(np.argmax(confs))
 
     xywhr = r0.obb.xywhr.detach().cpu().numpy()[idx]
-    cls_id = int(r0.obb.cls.detach().cpu().numpy()[idx]) if r0.obb.cls is not None else -1
+    cls_id = (
+        int(r0.obb.cls.detach().cpu().numpy()[idx]) if r0.obb.cls is not None else -1
+    )
     conf = float(confs[idx])
 
     u = float(xywhr[0])
@@ -163,6 +168,7 @@ def encode_zlib_b64(arr: np.ndarray) -> Tuple[str, List[int], str]:
 # xArm helper functions
 # =============================================================================
 
+
 def clear_errors(arm):
     arm.clean_error()
     arm.motion_enable(True)
@@ -196,3 +202,47 @@ def gripper_close(arm):
         print("Error closing gripper, clearing errors...")
         clear_errors(arm)
 
+
+def encode_jpeg_b64(frame: np.ndarray, quality: int = 80) -> str:
+    ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+    if not ok:
+        raise RuntimeError("Failed to JPEG-encode frame")
+    return base64.b64encode(buf.tobytes()).decode("ascii")
+
+
+def encode_zlib_b64(arr: np.ndarray) -> Tuple[str, List[int], str]:
+    arr = np.asarray(arr)
+    payload = zlib.compress(arr.tobytes(), level=6)
+    return base64.b64encode(payload).decode("ascii"), list(arr.shape), str(arr.dtype)
+
+
+def all_obb_detections(results):
+    """Return all OBB detections as JSON-friendly dictionaries."""
+    r0 = results[0]
+    if r0.obb is None or len(r0.obb) == 0:
+        return []
+
+    xywhr = r0.obb.xywhr.detach().cpu().numpy()
+    confs = r0.obb.conf.detach().cpu().numpy()
+    cls_ids = (
+        r0.obb.cls.detach().cpu().numpy()
+        if r0.obb.cls is not None
+        else np.full(len(confs), -1)
+    )
+    names = getattr(r0, "names", {})
+
+    dets = []
+    for i in range(len(confs)):
+        x, y, w, h, theta = map(float, xywhr[i])
+        cls_id = int(cls_ids[i])
+        dets.append(
+            {
+                "center": [x, y],
+                "size": [w, h],
+                "theta": theta,
+                "conf": float(confs[i]),
+                "cls_id": cls_id,
+                "name": str(names.get(cls_id, cls_id)),
+            }
+        )
+    return dets

@@ -1,34 +1,20 @@
-
-import asyncio
-import json
-import sys
 import threading
 import time
-from dataclasses import dataclass
-from typing import Optional, Tuple
-
-import cv2
-import numpy as np
-import pyzed.sl as sl
-import websockets
-from ultralytics import YOLO
-from xarm.wrapper import XArmAPI
-import apriltag
-from utils import *
-from config import *
-
+from typing import Any, Dict, Optional, Tuple
 
 # =============================================================================
 # Stream hub
 # =============================================================================
 
 class StreamHub:
-    """Thread-safe latest-frame store for both modes."""
+    """Thread-safe latest-frame store for all streaming channels."""
+
+    _CHANNELS = {"servo", "inspect", "wrist_raw", "base_raw"}
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._seq = {"servo": 0, "inspect": 0}
-        self._latest: Dict[str, Optional[Dict[str, Any]]] = {"servo": None, "inspect": None}
+        self._seq: Dict[str, int] = {ch: 0 for ch in self._CHANNELS}
+        self._latest: Dict[str, Optional[Dict[str, Any]]] = {ch: None for ch in self._CHANNELS}
         self._active_mode = "idle"
 
     def set_active_mode(self, mode: str):

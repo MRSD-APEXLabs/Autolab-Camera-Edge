@@ -1,31 +1,20 @@
-
-import asyncio
-import json
-import sys
 import threading
-import time
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
-import cv2
-import numpy as np
-import pyzed.sl as sl
-import websockets
-from ultralytics import YOLO
-from xarm.wrapper import XArmAPI
-import apriltag
-from utils import *
-from config import *
-
-# =============================================================================
-# Base worker
-# =============================================================================
 
 class CameraWorker(threading.Thread):
-    def __init__(self, name: str, serial: str):
+    """Base class for single-camera processing threads.
+
+    Subclasses receive an already-open camera and a grab lock.
+    They must NOT open or close the camera.
+    All camera.grab() calls must be made while holding grab_lock.
+    """
+
+    def __init__(self, name: str, camera, grab_lock: threading.Lock):
         super().__init__(daemon=True)
         self.name = name
-        self.serial = serial
+        self.camera = camera
+        self.grab_lock = grab_lock
         self.stop_event = threading.Event()
         self.exc: Optional[BaseException] = None
 
@@ -37,4 +26,3 @@ class CameraWorker(threading.Thread):
 
     def run(self):
         raise NotImplementedError
-

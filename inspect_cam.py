@@ -1,34 +1,30 @@
-import asyncio
-import json
-import sys
+import logging
 import threading
 import time
-from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import cv2
 import numpy as np
 import pyzed.sl as sl
-import websockets
-from ultralytics import YOLO
-from xarm.wrapper import XArmAPI
 import apriltag
+from ultralytics import YOLO
+
 from cam_worker import CameraWorker
 from utils import *
 from config import *
 from streamhub import StreamHub
 
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Worker B: inspect mode (video + pointcloud + apriltags + second YOLO)
 # =============================================================================
 
+
 class ZEDInspectWorker(CameraWorker):
-    def __init__(self, serial: str, stream_hub: StreamHub, debug: bool = False):
-        super().__init__("inspect", serial)
+    def __init__(self, camera, grab_lock: threading.Lock, stream_hub: StreamHub, debug: bool = False):
+        super().__init__("inspect", camera, grab_lock)
         self.debug = debug
         self.stream_hub = stream_hub
-        self.camera = sl.Camera()
         self.runtime = sl.RuntimeParameters()
         self.frame_mat = sl.Mat()
         self.depth_mat = sl.Mat()
@@ -36,20 +32,9 @@ class ZEDInspectWorker(CameraWorker):
 
         self.model = YOLO(MODEL_INSPECT)
         self.model.to("cuda")
-        self.apriltag_detector = apriltag.Detector(apriltag.DetectorOptions(families="tag16h5"))
-
-        init = sl.InitParameters()
-        init.set_from_serial_number(serial)
-        init.camera_resolution = sl.RESOLUTION.SVGA
-        init.camera_fps = 30
-        init.depth_mode = sl.DEPTH_MODE.NEURAL
-        init.coordinate_units = sl.UNIT.METER
-        init.depth_minimum_distance = 0.2
-        init.depth_maximum_distance = 1.7
-
-        err = self.camera.open(init)
-        if err != sl.ERROR_CODE.SUCCESS:
-            raise RuntimeError(f"Camera {serial} failed to open: {err}")
+        self.apriltag_detector = apriltag.Detector(
+            apriltag.DetectorOptions(families="tag16h5")
+        )
 
         cam_info = self.camera.get_camera_information()
         calib = cam_info.camera_configuration.calibration_parameters.left_cam
@@ -67,11 +52,6 @@ class ZEDInspectWorker(CameraWorker):
             _ = self.model(dummy, verbose=False)
 
     def cleanup(self):
-        try:
-            self.camera.close()
-        except Exception:
-            pass
-
         try:
             cv2.destroyWindow("inspect_camera")
         except Exception:
@@ -334,19 +314,6 @@ class ZEDInspectWorker(CameraWorker):
                 (0, 0, 255),
                 2,
             )
-
-            pose = self._estimate_apriltag_pose(int(r.tag_id), corners)
-
-            # fallback if solvePnP fails
-            if pose is None:
-                d = self._depth_at(depth_img, r.center[0], r.center[1], half_window=3)
-                p = self._depth_to_3d(r.center[0], r.center[1], d) if d is not None else None
-                if p is not None:
-                    pose = {
-                        "position": [float(p[0]), float(p[1]), float(p[2])],
-                        "orientation": [0.0, 0.0, 0.0, 1.0],
-                    }
-
             tag_payload.append(
                 {
                     "id": int(r.tag_id),
@@ -359,15 +326,21 @@ class ZEDInspectWorker(CameraWorker):
         return frame, tag_payload
 
     def run(self):
+        logger.info("inspect worker starting")
         try:
             while not self.should_stop():
                 start = time.time()
-                err = self.camera.grab(self.runtime)
+
+                with self.grab_lock:
+                    err = self.camera.grab(self.runtime)
+                    if err == sl.ERROR_CODE.SUCCESS:
+                        self.camera.retrieve_image(self.frame_mat, sl.VIEW.LEFT)
+                        self.camera.retrieve_measure(self.pc_mat, sl.MEASURE.XYZRGBA)
+
                 if err != sl.ERROR_CODE.SUCCESS:
                     time.sleep(0.001)
                     continue
 
-                self.camera.retrieve_image(self.frame_mat, sl.VIEW.LEFT)
                 frame = cv2.cvtColor(self.frame_mat.get_data(), cv2.COLOR_BGRA2BGR)
 
                 # depth aligned to LEFT image
@@ -412,9 +385,12 @@ class ZEDInspectWorker(CameraWorker):
 
                 frame, tags_3d = self.detect_apriltags(frame, depth_img)
 
-                self.camera.retrieve_measure(self.pc_mat, sl.MEASURE.XYZRGBA)
                 pc = self.pc_mat.get_data().reshape(-1, 4).astype(np.float32)
-                valid = np.isfinite(pc[:, 0]) & np.isfinite(pc[:, 1]) & np.isfinite(pc[:, 2])
+                valid = (
+                    np.isfinite(pc[:, 0])
+                    & np.isfinite(pc[:, 1])
+                    & np.isfinite(pc[:, 2])
+                )
                 pc = pc[valid]
                 if POINTCLOUD_STRIDE > 1 and len(pc) > 0:
                     pc = pc[::POINTCLOUD_STRIDE]
@@ -438,8 +414,13 @@ class ZEDInspectWorker(CameraWorker):
                         "frame_frame": "zed_left_camera",
                     },
                 )
+                logger.debug(
+                    "fps=%.1f  wellplates=%d  apriltags=%d  pts=%d",
+                    fps, len(dets), len(tags), len(pc),
+                )
 
         except BaseException as e:
+            logger.exception("inspect worker crashed: %s", e)
             self.exc = e
             raise
         finally:
