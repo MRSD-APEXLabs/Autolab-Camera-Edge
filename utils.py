@@ -217,9 +217,3 @@ def all_obb_detections(results):
             }
         )
     return dets
-
-
-def restart_zed_daemon():
-    print("[RECOVERY] Restarting zed_x_daemon...")
-    subprocess.run(["sudo", "systemctl", "restart", "zed_x_daemon"])
-    time.sleep(10)  # give daemon time to start

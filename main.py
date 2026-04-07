@@ -110,7 +110,7 @@ class ModeManager:
             raise ValueError(f"Unsupported mode: {mode}")
 
         with self.lock:
-            if mode == self.current_mode:
+            if mode == self.current_mode and (self.worker is None or self.worker.is_alive()):
                 self.stream_hub.set_active_mode(mode)
                 return self.current_mode
 
