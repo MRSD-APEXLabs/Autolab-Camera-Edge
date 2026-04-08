@@ -20,6 +20,8 @@ WebSocket servers:
 
 Only one active worker runs at a time. Both cameras are always open.
 A long-lived idle thread grabs raw images from both cameras continuously.
+Servo and inspect workers are also long-lived — they wait for start_run()
+and return to idle after each run rather than being recreated.
 """
 
 import asyncio
@@ -32,12 +34,12 @@ from typing import Optional
 import pyzed.sl as sl
 import websockets
 
-from cam_worker import CameraWorker
 from image_worker import ZEDImageWorker
 from inspect_cam import ZEDInspectWorker
 from visual_servo import ZEDYOLOServo
 from config import *
 from streamhub import StreamHub
+
 
 # =============================================================================
 # Mode manager
@@ -46,12 +48,19 @@ from streamhub import StreamHub
 
 class ModeManager:
     def __init__(self, arm_ip: str, stream_hub: StreamHub, debug: bool = False):
-        self.arm_ip = arm_ip
         self.stream_hub = stream_hub
         self.debug = debug
         self.lock = threading.Lock()
         self.current_mode = "idle"
-        self.worker: Optional[CameraWorker] = None
+
+        # Connect to xArm once for the lifetime of the process
+        self._arm = None
+        if not debug:
+            from xarm.wrapper import XArmAPI
+            self._arm = XArmAPI(arm_ip)
+            self._arm.connect()
+            if not self._arm.connected:
+                raise RuntimeError(f"Failed to connect to xArm at {arm_ip}")
 
         # Open wrist camera (cam1, no depth)
         self._wrist_cam = sl.Camera()
@@ -81,7 +90,7 @@ class ModeManager:
             self._wrist_cam.close()
             raise RuntimeError(f"Base camera {SERIAL_CAM2} failed to open: {err}")
 
-        # Start idle thread — runs for the lifetime of the process
+        # Long-lived workers — started once, run for the lifetime of the process
         self._idle_worker = ZEDImageWorker(
             self._wrist_cam, self._wrist_lock,
             self._base_cam, self._base_lock,
@@ -89,17 +98,34 @@ class ModeManager:
         )
         self._idle_worker.start()
 
-    def _stop_worker_locked(self):
-        if self.worker is None:
-            return
-        self.worker.stop()
-        self.worker.join(timeout=10.0)
-        self.worker = None
+        self._servo_worker = ZEDYOLOServo(
+            self._arm,
+            self._wrist_cam, self._wrist_lock,
+            stream_hub=stream_hub,
+            debug=debug,
+        )
+        self._servo_worker.start()
+
+        self._inspect_worker = ZEDInspectWorker(
+            self._base_cam, self._base_lock,
+            stream_hub=stream_hub,
+            debug=debug,
+        )
+        self._inspect_worker.start()
+
+    def _on_servo_complete(self):
+        with self.lock:
+            if self.current_mode == "servo":
+                self.current_mode = "idle"
+                self.stream_hub.set_active_mode("idle")
 
     def stop(self):
-        """Set mode to idle (stops active worker). Idle thread keeps running."""
+        """Set mode to idle."""
         with self.lock:
-            self._stop_worker_locked()
+            if self.current_mode == "servo":
+                self._servo_worker.abort_run()
+            elif self.current_mode == "inspect":
+                self._inspect_worker.abort_run()
             self.current_mode = "idle"
             self.stream_hub.set_active_mode("idle")
 
@@ -109,31 +135,20 @@ class ModeManager:
             raise ValueError(f"Unsupported mode: {mode}")
 
         with self.lock:
-            if mode == self.current_mode and (self.worker is None or self.worker.is_alive()):
+            if mode == self.current_mode:
                 self.stream_hub.set_active_mode(mode)
                 return self.current_mode
 
-            self._stop_worker_locked()
+            # Abort whatever is currently running
+            if self.current_mode == "servo":
+                self._servo_worker.abort_run()
+            elif self.current_mode == "inspect":
+                self._inspect_worker.abort_run()
 
             if mode == "servo":
-                self.worker = ZEDYOLOServo(
-                    self.arm_ip,
-                    self._wrist_cam,
-                    self._wrist_lock,
-                    stream_hub=self.stream_hub,
-                    debug=self.debug,
-                )
-                self.worker.start()
+                self._servo_worker.start_run(on_complete=self._on_servo_complete)
             elif mode == "inspect":
-                self.worker = ZEDInspectWorker(
-                    self._base_cam,
-                    self._base_lock,
-                    stream_hub=self.stream_hub,
-                    debug=self.debug,
-                )
-                self.worker.start()
-            else:
-                self.worker = None
+                self._inspect_worker.start_run()
 
             self.current_mode = mode
             self.stream_hub.set_active_mode(mode)
@@ -141,14 +156,15 @@ class ModeManager:
 
     def status(self):
         with self.lock:
-            alive = bool(self.worker and self.worker.is_alive())
-            return {"mode": self.current_mode, "worker_alive": alive}
+            return {"mode": self.current_mode}
 
     def shutdown(self):
-        """Stop active worker, stop idle thread, close both cameras."""
-        with self.lock:
-            self._stop_worker_locked()
-            self.current_mode = "idle"
+        """Stop all workers and close cameras/arm."""
+        self._servo_worker.stop()
+        self._servo_worker.join(timeout=10.0)
+
+        self._inspect_worker.stop()
+        self._inspect_worker.join(timeout=10.0)
 
         self._idle_worker.stop()
         self._idle_worker.join(timeout=5.0)
@@ -159,6 +175,11 @@ class ModeManager:
             print(repr(e))
         try:
             self._base_cam.close()
+        except Exception as e:
+            print(repr(e))
+        try:
+            if self._arm is not None:
+                self._arm.disconnect()
         except Exception as e:
             print(repr(e))
 

@@ -25,4 +25,7 @@ class CameraWorker(threading.Thread):
         return self.stop_event.is_set()
 
     def run(self):
+        self._run()
+
+    def _run(self):
         raise NotImplementedError

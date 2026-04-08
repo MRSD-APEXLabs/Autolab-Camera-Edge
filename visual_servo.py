@@ -21,10 +21,11 @@ logger = logging.getLogger(__name__)
 
 class ZEDYOLOServo(CameraWorker):
     def __init__(
-        self, ip: str, camera, grab_lock: threading.Lock, stream_hub: StreamHub, debug: bool = False
+        self, arm, camera, grab_lock: threading.Lock, stream_hub: StreamHub,
+        debug: bool = False
     ):
         super().__init__("servo", camera, grab_lock)
-        self.ip = ip
+        self.arm = arm
         self.debug = debug
         self.stream_hub = stream_hub
         self.runtime = sl.RuntimeParameters()
@@ -54,27 +55,33 @@ class ZEDYOLOServo(CameraWorker):
         dummy = np.zeros((600, 800, 3), dtype=np.uint8)
         for _ in range(3):
             _ = self.model(dummy, verbose=False)
-        
-        if not self.debug:
-            self.arm = XArmAPI(ip)
-            self.arm.connect()
-            if not self.arm.connected:
-                raise RuntimeError(f"Failed to connect to xArm at {ip}")
 
-        if not debug:
-            from xarm.wrapper import XArmAPI
-            self.arm = XArmAPI(ip)
-            self.arm.connect()
-            if not self.arm.connected:
-                raise RuntimeError(f"Failed to connect to xArm at {ip}")
-            self.arm.motion_enable(True)
-            self.arm.set_mode(0)
-            self.arm.set_state(0)
-            setup_gripper(self.arm)
-            gripper_open(self.arm)
-        else:
-            self.arm = None
-            logger.info("[DEBUG] arm skipped — debug mode")
+        self._run_event = threading.Event()
+        self._on_run_complete = None
+
+    # -------------------------------------------------------------------------
+    # State machine control
+    # -------------------------------------------------------------------------
+
+    def start_run(self, on_complete=None):
+        self.threshold_action_done = False
+        self._on_run_complete = on_complete
+        self._run_event.set()
+
+    def abort_run(self):
+        self._run_event.clear()
+
+    def stop(self):
+        """Kill the worker thread entirely."""
+        self.stop_event.set()
+        self._run_event.set()  # unblock wait so thread can exit
+
+    def should_stop(self) -> bool:
+        return not self._run_event.is_set() or self.stop_event.is_set()
+
+    # -------------------------------------------------------------------------
+    # Robot helpers
+    # -------------------------------------------------------------------------
 
     def cleanup(self):
         try:
@@ -123,7 +130,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 52,
+            y=y - 66.5,
             z=z,
             roll=roll,
             pitch=pitch,
@@ -136,7 +143,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 52,
+            y=y - 66.5,
             z=-52.7,
             roll=roll,
             pitch=pitch,
@@ -152,7 +159,7 @@ class ZEDYOLOServo(CameraWorker):
 
         code = self.arm.set_position(
             x=x + 94.3,
-            y=y - 52,
+            y=y - 66.5,
             z=0,
             roll=roll,
             pitch=pitch,
@@ -188,9 +195,12 @@ class ZEDYOLOServo(CameraWorker):
             return
 
         arm = self.arm
+        arm.clean_error()
+        arm.clean_warn()
         arm.motion_enable(True)
         arm.set_mode(0)
         arm.set_state(0)
+        time.sleep(0.1)
 
         code = arm.set_position(
             x=START_POS_MM[0],
@@ -262,157 +272,173 @@ class ZEDYOLOServo(CameraWorker):
         except Exception as e:
             logger.warning("stop_robot failed: %s", e)
 
-    def run(self):
-        logger.info("servo worker starting")
-        try:
-            # Clear arm errors
-            self.arm.clean_error()
-            self.arm.clean_warn()
-            time.sleep(0.1)
+    # -------------------------------------------------------------------------
+    # Thread entry points
+    # -------------------------------------------------------------------------
 
-            self.move_to_start_pose()
-            self.enable_cartesian_velocity_mode()
+    def _execute_run(self):
+        logger.info("servo run starting")
 
-            prev_time = time.time()
-            desired_area = None
+        if not self.debug:
+            setup_gripper(self.arm)
+            gripper_open(self.arm)
 
-            while not self.should_stop():
-                right_frame = sl.Mat()
-                with self.grab_lock:
-                    err = self.camera.grab(self.runtime)
-                    if err == sl.ERROR_CODE.SUCCESS:
-                        self.camera.retrieve_image(right_frame, self.view)
+        self.move_to_start_pose()
+        self.enable_cartesian_velocity_mode()
 
-                if err != sl.ERROR_CODE.SUCCESS:
-                    time.sleep(0.001)
-                    continue
+        prev_time = time.time()
+        desired_area = None
 
-                t0 = time.time()
-                frame = cv2.cvtColor(right_frame.get_data(), cv2.COLOR_BGRA2BGR)
-                t1 = time.time()
+        while not self.should_stop():
+            right_frame = sl.Mat()
+            with self.grab_lock:
+                err = self.camera.grab(self.runtime)
+                if err == sl.ERROR_CODE.SUCCESS:
+                    self.camera.retrieve_image(right_frame, self.view)
 
-                results = self.model(frame, verbose=False)
-                t2 = time.time()
+            if err != sl.ERROR_CODE.SUCCESS:
+                time.sleep(0.001)
+                continue
 
-                obb = best_obb_from_results(results)
-                target_uv = self.project_gripper_center(frame.shape)
-                detections = []
+            t0 = time.time()
+            frame = cv2.cvtColor(right_frame.get_data(), cv2.COLOR_BGRA2BGR)
+            t1 = time.time()
 
-                if obb is not None:
-                    detections.append(
-                        {
-                            "center": [float(obb[0]), float(obb[1])],
-                            "size": [float(obb[2]), float(obb[3])],
-                            "theta": float(obb[4]),
-                            "conf": float(obb[5]),
-                            "cls_id": int(obb[6]),
-                        }
-                    )
+            results = self.model(frame, verbose=False)
+            t2 = time.time()
 
-                    area = obb[2] * obb[3]
+            obb = best_obb_from_results(results)
+            target_uv = self.project_gripper_center(frame.shape)
+            detections = []
 
-                    if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
-                        self.threshold_action_done = True
-                        cv2.putText(
-                            frame,
-                            f"threshold reached: area={area:.0f}",
-                            (20, 40),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            1.0,
-                            (0, 0, 255),
-                            2,
-                        )
-                        cv2.waitKey(1)
-                        self.execute_threshold_motion()
-                        break
+            if obb is not None:
+                detections.append(
+                    {
+                        "center": [float(obb[0]), float(obb[1])],
+                        "size": [float(obb[2]), float(obb[3])],
+                        "theta": float(obb[4]),
+                        "conf": float(obb[5]),
+                        "cls_id": int(obb[6]),
+                    }
+                )
 
-                    if desired_area is None:
-                        desired_area = area
+                area = obb[2] * obb[3]
 
-                    Vc, (u, v, w, h, theta, conf, cls_id) = image_ibvs_command(
-                        obb=obb,
-                        target_uv=target_uv,
-                        desired_area=desired_area,
-                        desired_theta=0.0,
-                    )
-
-                    Vg = self.Ad_g_c @ Vc
-                    Vg[0] *= -1
-
-                    Vg[:3] = np.clip(Vg[:3], -0.08, 0.08)
-                    Vg[3:] = np.clip(Vg[3:], -0.40, 0.40)
-                    Vg[0] = np.clip(Vg[0], -0.01, 0.01)
-                    Vg[1] = np.clip(Vg[1], -0.01, 0.01)
-                    Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
-
-                    logger.debug("clamped Vg: vx=%+.3f, vy=%+.3f, vz=%+.3f", Vg[0], Vg[1], Vg[2])
-                    self.send_velocity_to_robot(Vg)
-
-                    draw_crosshair(
-                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
-                    )
+                if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
+                    self.threshold_action_done = True
                     cv2.putText(
                         frame,
-                        "gripper target",
-                        (int(target_uv[0]) + 18, int(target_uv[1]) - 18),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 255, 255),
-                        2,
-                    )
-                    cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
-                    frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
-                    cv2.putText(
-                        frame,
-                        f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}",
-                        (20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1.0,
-                        (0, 255, 0),
-                        2,
-                    )
-                else:
-                    self.stop_robot()
-                    draw_crosshair(
-                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
-                    )
-                    cv2.putText(
-                        frame,
-                        "no detection",
+                        f"threshold reached: area={area:.0f}",
                         (20, 40),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         1.0,
                         (0, 0, 255),
                         2,
                     )
+                    cv2.waitKey(1)
+                    self.execute_threshold_motion()
+                    break
 
-                t3 = time.time()
-                fps = 1.0 / max((t3 - prev_time), 1e-6)
-                prev_time = t3
+                if desired_area is None:
+                    desired_area = area
 
-                img_b64 = encode_jpeg_b64(frame)
-                self.stream_hub.publish(
-                    "servo",
-                    {
-                        "type": "servo_frame",
-                        "image_jpeg_b64": img_b64,
-                        "detections": detections,
-                        "target_uv": [float(target_uv[0]), float(target_uv[1])],
-                        "fps": float(fps),
-                        "capture_ms": float((t1 - t0) * 1000.0),
-                        "inference_ms": float((t2 - t1) * 1000.0),
-                        "post_ms": float((t3 - t2) * 1000.0),
-                    },
+                Vc, (u, v, w, h, theta, conf, cls_id) = image_ibvs_command(
+                    obb=obb,
+                    target_uv=target_uv,
+                    desired_area=desired_area,
+                    desired_theta=0.0,
                 )
 
-                logger.debug(
-                    "capture=%.1fms  inference=%.1fms  post=%.1fms  fps=%.1f",
-                    (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0, fps,
+                Vg = self.Ad_g_c @ Vc
+                Vg[0] *= -1
+
+                Vg[:3] = np.clip(Vg[:3], -0.08, 0.08)
+                Vg[3:] = np.clip(Vg[3:], -0.40, 0.40)
+                Vg[0] = np.clip(Vg[0], -0.01, 0.01)
+                Vg[1] = np.clip(Vg[1], -0.01, 0.01)
+                Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
+
+                logger.debug("clamped Vg: vx=%+.3f, vy=%+.3f, vz=%+.3f", Vg[0], Vg[1], Vg[2])
+                self.send_velocity_to_robot(Vg)
+
+                draw_crosshair(
+                    frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                )
+                cv2.putText(
+                    frame,
+                    "gripper target",
+                    (int(target_uv[0]) + 18, int(target_uv[1]) - 18),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 255),
+                    2,
+                )
+                cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
+                frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
+                cv2.putText(
+                    frame,
+                    f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}",
+                    (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0,
+                    (0, 255, 0),
+                    2,
+                )
+            else:
+                self.stop_robot()
+                draw_crosshair(
+                    frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                )
+                cv2.putText(
+                    frame,
+                    "no detection",
+                    (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0,
+                    (0, 0, 255),
+                    2,
                 )
 
-        except Exception as e:
-            logger.exception("servo worker crashed: %s", e)
-            self.exc = e
-            raise
-        finally:
-            self.cleanup()
+            t3 = time.time()
+            fps = 1.0 / max((t3 - prev_time), 1e-6)
+            prev_time = t3
+
+            img_b64 = encode_jpeg_b64(frame)
+            self.stream_hub.publish(
+                "servo",
+                {
+                    "type": "servo_frame",
+                    "image_jpeg_b64": img_b64,
+                    "detections": detections,
+                    "target_uv": [float(target_uv[0]), float(target_uv[1])],
+                    "fps": float(fps),
+                    "capture_ms": float((t1 - t0) * 1000.0),
+                    "inference_ms": float((t2 - t1) * 1000.0),
+                    "post_ms": float((t3 - t2) * 1000.0),
+                },
+            )
+
+            logger.debug(
+                "capture=%.1fms  inference=%.1fms  post=%.1fms  fps=%.1f",
+                (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0, fps,
+            )
+
+        logger.info("servo run finished")
+
+    def _run(self):
+        logger.info("servo worker ready")
+        while not self.stop_event.is_set():
+            if not self._run_event.wait(timeout=0.5):
+                continue
+            if self.stop_event.is_set():
+                break
+            try:
+                self._execute_run()
+            except Exception as e:
+                logger.exception("servo worker crashed: %s", e)
+                self.exc = e
+            finally:
+                self.cleanup()
+                self._run_event.clear()
+                if self._on_run_complete:
+                    self._on_run_complete()
