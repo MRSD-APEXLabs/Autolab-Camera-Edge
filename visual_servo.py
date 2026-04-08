@@ -335,9 +335,10 @@ class ZEDYOLOServo(CameraWorker):
                         (0, 0, 255),
                         2,
                     )
-                    cv2.waitKey(1)
-                    self.execute_threshold_motion()
-                    break
+                    if not self.debug:
+                        cv2.waitKey(1)
+                        self.execute_threshold_motion()
+                        break
 
                 if desired_area is None:
                     desired_area = area
