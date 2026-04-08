@@ -35,6 +35,7 @@ class ZEDImageWorker(threading.Thread):
         self.stop_event = threading.Event()
         self.wrist_runtime = sl.RuntimeParameters()
         self.base_runtime = sl.RuntimeParameters()
+        self.base_runtime.enable_depth = False  # raw stream needs image only, not NEURAL depth
         self.wrist_mat = sl.Mat()
         self.base_mat = sl.Mat()
 
@@ -62,6 +63,8 @@ class ZEDImageWorker(threading.Thread):
                     },
                 )
 
+            time.sleep(0)  # yield so inspect/servo workers can acquire base_lock
+
             base_ok = False
             with self.base_lock:
                 err = self.base_cam.grab(self.base_runtime)
@@ -79,6 +82,8 @@ class ZEDImageWorker(threading.Thread):
                         "image_jpeg_b64": encode_jpeg_b64(frame),
                     },
                 )
+
+            time.sleep(0)  # yield so inspect/servo workers can acquire wrist_lock
 
             if not wrist_ok and not base_ok:
                 time.sleep(0.001)
