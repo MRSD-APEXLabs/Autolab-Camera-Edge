@@ -202,18 +202,20 @@ class ZEDYOLOServo(CameraWorker):
         arm.set_state(0)
         time.sleep(0.1)
 
-        code = arm.set_position(
-            x=START_POS_MM[0],
-            y=START_POS_MM[1],
-            z=START_POS_MM[2],
-            roll=START_RPY_DEG[0],
-            pitch=START_RPY_DEG[1],
-            yaw=START_RPY_DEG[2],
-            speed=100,
-            wait=True,
-        )
-        if code != 0:
-            raise RuntimeError(f"xArm set_position failed with code {code}")
+        # Commenting this out (maybe we make this configurable)
+        #   We do not want the arm to go to home position every time we start.
+        # code = arm.set_position(
+        #     x=START_POS_MM[0],
+        #     y=START_POS_MM[1],
+        #     z=START_POS_MM[2],
+        #     roll=START_RPY_DEG[0],
+        #     pitch=START_RPY_DEG[1],
+        #     yaw=START_RPY_DEG[2],
+        #     speed=100,
+        #     wait=True,
+        # )
+        # if code != 0:
+        #     raise RuntimeError(f"xArm set_position failed with code {code}")
 
     def enable_cartesian_velocity_mode(self):
         if self.debug:
