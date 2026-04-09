@@ -156,7 +156,7 @@ class ModeManager:
 
     def status(self):
         with self.lock:
-            return {"mode": self.current_mode}
+            return {"mode": self.current_mode, "worker_alive": True}
 
     def shutdown(self):
         """Stop all workers and close cameras/arm."""
