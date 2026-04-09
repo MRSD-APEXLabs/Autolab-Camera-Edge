@@ -99,6 +99,98 @@ class ZEDInspectWorker(CameraWorker):
 
         return frame, tag_payload
 
+    def _depth_to_3d(self, u: float, v: float, depth_m: float):
+        if not np.isfinite(depth_m) or depth_m <= 0.0:
+            return None
+        x = (u - self.cx) / self.fx * depth_m
+        y = (v - self.cy) / self.fy * depth_m
+        z = depth_m
+        return np.array([x, y, z], dtype=np.float64)
+
+    def _depth_at(self, depth_img, u: float, v: float, half_window: int = 2):
+        h, w = depth_img.shape[:2]
+        x0 = max(0, int(round(u)) - half_window)
+        x1 = min(w, int(round(u)) + half_window + 1)
+        y0 = max(0, int(round(v)) - half_window)
+        y1 = min(h, int(round(v)) + half_window + 1)
+
+        patch = depth_img[y0:y1, x0:x1].astype(np.float32).reshape(-1)
+        patch = patch[np.isfinite(patch)]
+        patch = patch[patch > 0.0]
+
+        if patch.size == 0:
+            return None
+        return float(np.median(patch))
+
+    def _sample_points_in_box(
+        self, depth_img, cx: float, cy: float, w: float, h: float, step: int = 4
+    ):
+        h_img, w_img = depth_img.shape[:2]
+        x0 = max(0, int(cx - w / 2))
+        x1 = min(w_img - 1, int(cx + w / 2))
+        y0 = max(0, int(cy - h / 2))
+        y1 = min(h_img - 1, int(cy + h / 2))
+
+        pts = []
+        for yy in range(y0, y1 + 1, step):
+            for xx in range(x0, x1 + 1, step):
+                d = self._depth_at(depth_img, xx, yy, half_window=1)
+                if d is None:
+                    continue
+                p = self._depth_to_3d(xx, yy, d)
+                if p is not None and np.all(np.isfinite(p)):
+                    pts.append(p)
+
+        if len(pts) == 0:
+            return None
+        return np.asarray(pts, dtype=np.float64)
+
+    def _normalize(self, v: np.ndarray):
+        n = float(np.linalg.norm(v))
+        if n < 1e-9:
+            return None
+        return v / n
+
+    def _rotmat_to_quat(self, R: np.ndarray):
+        # returns x, y, z, w
+        tr = float(np.trace(R))
+        if tr > 0.0:
+            S = np.sqrt(tr + 1.0) * 2.0
+            qw = 0.25 * S
+            qx = (R[2, 1] - R[1, 2]) / S
+            qy = (R[0, 2] - R[2, 0]) / S
+            qz = (R[1, 0] - R[0, 1]) / S
+        else:
+            if R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+                S = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2.0
+                qw = (R[2, 1] - R[1, 2]) / S
+                qx = 0.25 * S
+                qy = (R[0, 1] + R[1, 0]) / S
+                qz = (R[0, 2] + R[2, 0]) / S
+            elif R[1, 1] > R[2, 2]:
+                S = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2.0
+                qw = (R[0, 2] - R[2, 0]) / S
+                qx = (R[0, 1] + R[1, 0]) / S
+                qy = 0.25 * S
+                qz = (R[1, 2] + R[2, 1]) / S
+            else:
+                S = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2.0
+                qw = (R[1, 0] - R[0, 1]) / S
+                qx = (R[0, 2] + R[2, 0]) / S
+                qy = (R[1, 2] + R[2, 1]) / S
+                qz = 0.25 * S
+
+        q = np.array([qx, qy, qz, qw], dtype=np.float64)
+        q /= max(np.linalg.norm(q), 1e-12)
+        return q.tolist()
+
+    def _pose_dict(self, tvec: np.ndarray, R: np.ndarray):
+        qx, qy, qz, qw = self._rotmat_to_quat(R)
+        return {
+            "position": [float(tvec[0]), float(tvec[1]), float(tvec[2])],
+            "orientation": [float(qx), float(qy), float(qz), float(qw)],
+        }
+
     def _estimate_wellplate_pose(self, det, depth_img):
         cx, cy = det["center"]
         w, h = det["size"]
