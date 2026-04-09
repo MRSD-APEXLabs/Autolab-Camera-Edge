@@ -33,7 +33,7 @@ class ZEDInspectWorker(CameraWorker):
         self.model = YOLO(MODEL_INSPECT)
         self.model.to("cuda")
         self.apriltag_detector = apriltag.Detector(
-            apriltag.DetectorOptions(families="tag16h5")
+            apriltag.DetectorOptions(families="36h11")
         )
 
         dummy = np.zeros((600, 800, 3), dtype=np.uint8)
@@ -147,7 +147,7 @@ class ZEDInspectWorker(CameraWorker):
 
         tag_payload = []
         for r in results:
-            if r.tag_id not in [2, 13]:
+            if r.tag_id not in [0, 1, 2]:
                 continue
             corners = np.array(r.corners, dtype=np.float64)
 
