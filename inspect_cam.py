@@ -43,6 +43,14 @@ class ZEDInspectWorker(CameraWorker):
         self._run_event = threading.Event()
         self._on_run_complete = None
 
+        cam_info = self.camera.get_camera_information()
+        right_calib = cam_info.camera_configuration.calibration_parameters.right_cam
+        self.fx = float(right_calib.fx)
+        self.fy = float(right_calib.fy)
+        self.cx = float(right_calib.cx)
+        self.cy = float(right_calib.cy)
+
+
     # -------------------------------------------------------------------------
     # State machine control
     # -------------------------------------------------------------------------
