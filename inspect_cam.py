@@ -464,6 +464,7 @@ class ZEDInspectWorker(CameraWorker):
                     "apriltags": tags,
                     "pc_count": int(len(pc)),
                     "fps": float(fps),
+                    "frame_frame": "zed_left_camera",
                 },
             )
             logger.debug(
