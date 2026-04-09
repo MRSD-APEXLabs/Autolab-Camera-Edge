@@ -86,6 +86,9 @@ class ZEDInspectWorker(CameraWorker):
 
         tag_payload = []
         for r in results:
+            if r.tag_id not in [2, 13]:
+                continue
+
             pts = np.array(r.corners, dtype=np.int32).reshape((-1, 1, 2))
             cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
             cv2.putText(
