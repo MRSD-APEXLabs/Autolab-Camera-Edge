@@ -44,7 +44,7 @@ class ZEDInspectWorker(CameraWorker):
         self._on_run_complete = None
 
         cam_info = self.camera.get_camera_information()
-        left_calib = cam_info.camera_configuration.calibration_parameters.left
+        left_calib = cam_info.camera_configuration.calibration_parameters.left_cam
         self.fx = float(left_calib.fx)
         self.fy = float(left_calib.fy)
         self.cx = float(left_calib.cx)
