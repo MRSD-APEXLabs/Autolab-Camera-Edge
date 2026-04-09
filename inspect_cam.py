@@ -391,7 +391,7 @@ class ZEDInspectWorker(CameraWorker):
                 if err == sl.ERROR_CODE.SUCCESS:
                     self.camera.retrieve_image(self.frame_mat, sl.VIEW.LEFT)
                     self.camera.retrieve_measure(self.pc_mat, sl.MEASURE.XYZRGBA)
-                    self.camera.retrieve_measure(self.depth_mat, sl.MEASURE.XYZRGBA)
+                    self.camera.retrieve_measure(self.depth_mat, sl.MEASURE.DEPTH)
 
             if err != sl.ERROR_CODE.SUCCESS:
                 time.sleep(0.001)
