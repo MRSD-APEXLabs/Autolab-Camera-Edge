@@ -29,6 +29,7 @@ class ZEDInspectWorker(CameraWorker):
         self.runtime = sl.RuntimeParameters()
         self.frame_mat = sl.Mat()
         self.pc_mat = sl.Mat()
+        self.depth_mat = sl.Mat()
         self.model = YOLO(MODEL_INSPECT)
         self.model.to("cuda")
         self.apriltag_detector = apriltag.Detector(
@@ -206,6 +207,7 @@ class ZEDInspectWorker(CameraWorker):
                 if err == sl.ERROR_CODE.SUCCESS:
                     self.camera.retrieve_image(self.frame_mat, sl.VIEW.LEFT)
                     self.camera.retrieve_measure(self.pc_mat, sl.MEASURE.XYZRGBA)
+                    self.camera.retrieve_measure(self.depth_mat, sl.MEASURE.XYZRGBA)
 
             if err != sl.ERROR_CODE.SUCCESS:
                 time.sleep(0.001)
@@ -216,6 +218,7 @@ class ZEDInspectWorker(CameraWorker):
             results = self.model(frame, verbose=False)
             dets = all_obb_detections(results)
 
+            depth_img = self.depth_mat.get_data().astype(np.float32)
             dets_3d = []
             for det in dets:
                 cx, cy = det["center"]
