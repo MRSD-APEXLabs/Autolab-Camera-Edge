@@ -50,6 +50,8 @@ class ZEDInspectWorker(CameraWorker):
         self.cx = float(right_calib.cx)
         self.cy = float(right_calib.cy)
 
+        self.apriltag_size_m = 0.0725  # tag side length in meters
+
 
     # -------------------------------------------------------------------------
     # State machine control
@@ -80,7 +82,66 @@ class ZEDInspectWorker(CameraWorker):
         except Exception:
             pass
 
-    def detect_apriltags(self, frame):
+    def _order_corners(self, corners: np.ndarray) -> np.ndarray:
+        """
+        Reorder corners into a stable clockwise order starting near top-left.
+        """
+        corners = np.asarray(corners, dtype=np.float64).reshape(4, 2)
+        c = corners.mean(axis=0)
+        angles = np.arctan2(corners[:, 1] - c[1], corners[:, 0] - c[0])
+        corners = corners[np.argsort(angles)]
+
+        # rotate so first point is top-left-ish
+        idx0 = int(np.argmin(corners[:, 0] + corners[:, 1]))
+        corners = np.roll(corners, -idx0, axis=0)
+        return corners
+
+    def _estimate_apriltag_pose(self, tag_id: int, corners_2d: np.ndarray):
+        """
+        Return dict with position/orientation if pose is found, else None.
+        """
+        s = float(self.apriltag_size_m)
+
+        obj_pts = np.array(
+            [
+                [-s / 2.0, -s / 2.0, 0.0],
+                [s / 2.0, -s / 2.0, 0.0],
+                [s / 2.0, s / 2.0, 0.0],
+                [-s / 2.0, s / 2.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
+
+        img_pts = self._order_corners(corners_2d).astype(np.float32)
+
+        K = np.array(
+            [
+                [self.fx, 0.0, self.cx],
+                [0.0, self.fy, self.cy],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
+
+        ok, rvec, tvec = cv2.solvePnP(
+            obj_pts,
+            img_pts,
+            K,
+            None,
+            flags=cv2.SOLVEPNP_ITERATIVE,
+        )
+        if not ok:
+            return None
+
+        R, _ = cv2.Rodrigues(rvec)
+
+        q = self._rotmat_to_quat(R)
+        return {
+            "position": [float(tvec[0]), float(tvec[1]), float(tvec[2])],
+            "orientation": [float(q[0]), float(q[1]), float(q[2]), float(q[3])],
+        }
+
+    def detect_apriltags(self, frame, depth_img):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         results = self.apriltag_detector.detect(gray)
 
@@ -88,8 +149,10 @@ class ZEDInspectWorker(CameraWorker):
         for r in results:
             if r.tag_id not in [2, 13]:
                 continue
+            corners = np.array(r.corners, dtype=np.float64)
 
-            pts = np.array(r.corners, dtype=np.int32).reshape((-1, 1, 2))
+            pts = corners.astype(np.int32).reshape((-1, 1, 2))
+
             cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
             cv2.putText(
                 frame,
@@ -100,11 +163,29 @@ class ZEDInspectWorker(CameraWorker):
                 (0, 0, 255),
                 2,
             )
+
+            pose = self._estimate_apriltag_pose(int(r.tag_id), corners)
+
+            # fallback if solvePnP fails
+            if pose is None:
+                d = self._depth_at(depth_img, r.center[0], r.center[1], half_window=3)
+                p = (
+                    self._depth_to_3d(r.center[0], r.center[1], d)
+                    if d is not None
+                    else None
+                )
+                if p is not None:
+                    pose = {
+                        "position": [float(p[0]), float(p[1]), float(p[2])],
+                        "orientation": [0.0, 0.0, 0.0, 1.0],
+                    }
+
             tag_payload.append(
                 {
                     "id": int(r.tag_id),
                     "center": [float(r.center[0]), float(r.center[1])],
-                    "corners": [[float(x), float(y)] for x, y in r.corners],
+                    "corners": [[float(x), float(y)] for x, y in corners],
+                    "pose": pose,
                 }
             )
 
@@ -354,7 +435,7 @@ class ZEDInspectWorker(CameraWorker):
                 det_3d["pose"] = pose
                 dets_3d.append(det_3d)
 
-            frame, tags = self.detect_apriltags(frame)
+            frame, tags = self.detect_apriltags(frame, depth_img)
 
             pc = self.pc_mat.get_data().reshape(-1, 4).astype(np.float32)
             valid = (
