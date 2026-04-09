@@ -170,7 +170,7 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             raise RuntimeError(f"xArm fourth threshold move failed with code {code}")
 
-        self.arm.set_mode(0)
+        self.arm.set_mode(1)
         self.arm.set_state(0)
         self.arm.clean_error()
         self.arm.clean_warn()
@@ -290,6 +290,7 @@ class ZEDYOLOServo(CameraWorker):
             setup_gripper(self.arm)
             gripper_open(self.arm)
 
+        self.arm.connect()
         self.move_to_start_pose()
         self.enable_cartesian_velocity_mode()
 
@@ -345,6 +346,7 @@ class ZEDYOLOServo(CameraWorker):
                     if not self.debug:
                         cv2.waitKey(1)
                         self.execute_threshold_motion()
+                        self.arm.disconnect()
                         break
 
                 if desired_area is None:
