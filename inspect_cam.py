@@ -33,7 +33,7 @@ class ZEDInspectWorker(CameraWorker):
         self.model = YOLO(MODEL_INSPECT)
         self.model.to("cuda")
         self.apriltag_detector = apriltag.Detector(
-            apriltag.DetectorOptions(families="36h11")
+            apriltag.DetectorOptions(families="tag36h11")
         )
 
         dummy = np.zeros((600, 800, 3), dtype=np.uint8)
