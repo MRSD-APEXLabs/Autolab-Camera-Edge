@@ -170,7 +170,7 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             raise RuntimeError(f"xArm fourth threshold move failed with code {code}")
 
-        self.arm.set_mode(1)
+        self.arm.set_mode(0)
         self.arm.set_state(0)
 
     def project_gripper_center(self, image_shape):
