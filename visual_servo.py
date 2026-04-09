@@ -172,6 +172,8 @@ class ZEDYOLOServo(CameraWorker):
 
         self.arm.set_mode(0)
         self.arm.set_state(0)
+        self.arm.clean_error()
+        self.arm.clean_warn()
 
     def project_gripper_center(self, image_shape):
         H, W = image_shape[:2]
