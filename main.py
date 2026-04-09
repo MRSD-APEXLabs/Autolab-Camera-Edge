@@ -116,6 +116,11 @@ class ModeManager:
     def _on_servo_complete(self):
         with self.lock:
             if self.current_mode == "servo":
+                self._servo_worker.arm.disconnect()
+                self._servo_worker.arm.set_mode(1)
+                self._servo_worker.arm.set_state(0)
+                self._servo_worker.arm.clean_error()
+                self._servo_worker.arm.clean_warn()
                 self.current_mode = "idle"
                 self.stream_hub.set_active_mode("idle")
 
