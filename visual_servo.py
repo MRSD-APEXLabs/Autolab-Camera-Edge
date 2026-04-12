@@ -93,6 +93,9 @@ class ZEDYOLOServo(CameraWorker):
             if self.arm is not None:
                 self.arm.set_mode(0)
                 self.arm.set_state(0)
+                self.arm.clean_error()
+                self.arm.clean_warn()
+                self.arm.disconnect()
         except Exception:
             pass
 
@@ -154,7 +157,10 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             raise RuntimeError(f"xArm second threshold move failed with code {code}")
 
-        gripper_close(self.arm)
+        try:
+            gripper_close(self.arm)
+        except Exception as e:
+            logger.warning("gripper_close failed (no gripper?): %s", e)
         time.sleep(5)
 
         code = self.arm.set_position(
@@ -168,7 +174,7 @@ class ZEDYOLOServo(CameraWorker):
             wait=True,
         )
         if code != 0:
-            raise RuntimeError(f"xArm fourth threshold move failed with code {code}")
+            logger.warning("xArm fourth threshold move failed with code %d", code)
 
         code = self.arm.set_position(
             x=x,
@@ -181,7 +187,7 @@ class ZEDYOLOServo(CameraWorker):
             wait=True,
         )
         if code != 0:
-            raise RuntimeError(f"xArm fifth threshold move failed with code {code}")
+            logger.warning("xArm fifth threshold move failed with code %d", code)
 
     def project_gripper_center(self, image_shape):
         H, W = image_shape[:2]
