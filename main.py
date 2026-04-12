@@ -320,10 +320,16 @@ async def main_async():
 
 def main():
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s  %(levelname)-8s  [%(threadName)s]  %(name)s  %(message)s",
         datefmt="%H:%M:%S",
     )
+
+    # Project modules log at DEBUG; everything else (websockets, asyncio, etc.) at WARNING.
+    for mod in ("__main__", "visual_servo", "inspect_cam", "image_worker", "cam_worker"):
+        logging.getLogger(mod).setLevel(logging.DEBUG)
+    for noisy in ("websockets", "asyncio"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
     devices = sl.Camera.get_device_list()
     if not devices:
