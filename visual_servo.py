@@ -91,10 +91,13 @@ class ZEDYOLOServo(CameraWorker):
 
         try:
             if self.arm is not None:
-                self.arm.set_mode(0)
-                self.arm.set_state(0)
+                # Use mode 1 (online trajectory planning) so MoveIt/ROS2 can
+                # reactivate its controller after servo exits.  Mode 0 leaves
+                # the arm in a state the xarm_ros2 driver cannot take over from.
                 self.arm.clean_error()
                 self.arm.clean_warn()
+                self.arm.set_mode(1)
+                self.arm.set_state(0)
                 self.arm.disconnect()
         except Exception:
             pass
