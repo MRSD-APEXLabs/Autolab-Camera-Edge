@@ -166,6 +166,15 @@ class ZEDYOLOServo(CameraWorker):
             logger.warning("gripper_close failed (no gripper?): %s", e)
         time.sleep(5)
 
+        # Re-assert mode 0 before moving back up: gripper_close (or gripping a
+        # physical object) can leave the arm in an error/mode-1 state.
+        self.arm.clean_error()
+        self.arm.clean_warn()
+        self.arm.motion_enable(True)
+        self.arm.set_mode(0)
+        self.arm.set_state(0)
+        time.sleep(0.5)
+
         code = self.arm.set_position(
             x=x + 94.3,
             y=y - 66.5,
