@@ -170,6 +170,19 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             raise RuntimeError(f"xArm fourth threshold move failed with code {code}")
 
+        code = self.arm.set_position(
+            x=x,
+            y=y,
+            z=z,
+            roll=roll,
+            pitch=pitch,
+            yaw=yaw,
+            speed=10,
+            wait=True,
+        )
+        if code != 0:
+            raise RuntimeError(f"xArm fifth threshold move failed with code {code}")
+
     def project_gripper_center(self, image_shape):
         H, W = image_shape[:2]
         p_g = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
@@ -339,7 +352,6 @@ class ZEDYOLOServo(CameraWorker):
                         2,
                     )
                     if not self.debug:
-                        cv2.waitKey(1)
                         self.execute_threshold_motion()
                         break
 
