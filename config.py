@@ -24,3 +24,9 @@ START_RPY_DEG = np.array([-180.0, 0.0, 0.0], dtype=np.float64)
 
 POINTCLOUD_STRIDE = 8
 STREAM_HZ = 15.0
+
+# 60 fps is required to avoid an intermittent MAX96712 dual-link init race on the
+# ZEDLinkDuo + Jetson Xavier stack. At 30 fps the GMSL2 link timing triggers a
+# race condition in the sl_max96712 driver when the second camera registers while
+# the first is already streaming. Do not lower this without re-validating startup.
+CAMERA_FPS = 60

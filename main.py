@@ -68,7 +68,7 @@ class ModeManager:
         wrist_init = sl.InitParameters()
         wrist_init.set_from_serial_number(SERIAL_CAM1)
         wrist_init.camera_resolution = sl.RESOLUTION.SVGA
-        wrist_init.camera_fps = 30
+        wrist_init.camera_fps = CAMERA_FPS
         wrist_init.depth_mode = sl.DEPTH_MODE.NONE
         err = self._wrist_cam.open(wrist_init)
         if err != sl.ERROR_CODE.SUCCESS:
@@ -80,7 +80,7 @@ class ModeManager:
         base_init = sl.InitParameters()
         base_init.set_from_serial_number(SERIAL_CAM2)
         base_init.camera_resolution = sl.RESOLUTION.SVGA
-        base_init.camera_fps = 30
+        base_init.camera_fps = CAMERA_FPS
         base_init.depth_mode = sl.DEPTH_MODE.NEURAL
         base_init.coordinate_units = sl.UNIT.METER
         base_init.depth_minimum_distance = 0.2
