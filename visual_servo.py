@@ -152,7 +152,7 @@ class ZEDYOLOServo(CameraWorker):
             else:
                 shorter_axis_rad = theta_obb
             yaw_delta_deg = -float(np.degrees(shorter_axis_rad)) + GRASP_YAW_OFFSET_DEG
-            grasp_yaw = yaw + yaw_delta_deg
+            grasp_yaw = yaw - yaw_delta_deg
             logger.info(
                 "Plate OBB: w=%.1f h=%.1f theta=%.3f rad → yaw_delta=%.1f° → grasp_yaw=%.1f°",
                 w_obb, h_obb, theta_obb, yaw_delta_deg, grasp_yaw,

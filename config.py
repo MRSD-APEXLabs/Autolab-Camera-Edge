@@ -19,7 +19,7 @@ STREAM_PORT = 8766
 RAW_STREAM_PORT = 8767
 
 AREA_STOP_THRESHOLD = 50000.0
-GRASP_DESCENT_MM = 100.0     # mm to descend below IBVS-converged Z to reach grasp height
+GRASP_DESCENT_MM = 50.0     # mm to descend below IBVS-converged Z to reach grasp height
 GRASP_YAW_OFFSET_DEG = 0.0  # additional yaw correction for physical gripper calibration
 START_POS_MM = np.array([-2.6, 320.0, 222.0], dtype=np.float64)
 START_RPY_DEG = np.array([-180.0, 0.0, 0.0], dtype=np.float64)
