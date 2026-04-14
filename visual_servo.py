@@ -134,25 +134,7 @@ class ZEDYOLOServo(CameraWorker):
             x, y, z, roll, pitch, yaw,
         )
 
-        roll = 180
-        pitch = 0
-
         z_grasp = z - GRASP_DESCENT_MM
-
-
-        code = self.arm.set_position(
-            x=x,
-            y=y,
-            z=z,
-            roll=roll,
-            pitch=pitch,
-            yaw=yaw,
-            speed=100,
-            wait=True,
-        )
-
-        if code != 0:
-            raise RuntimeError(f"xArm rotation alignment failed with code {code}")
 
         # --- Compute grasp yaw to align gripper with plate's shorter axis ---
         # (fingers contact the midpoints of the two longer edges)
@@ -262,20 +244,36 @@ class ZEDYOLOServo(CameraWorker):
         arm.set_state(0)
         time.sleep(0.1)
 
-        # Commenting this out (maybe we make this configurable)
-        #   We do not want the arm to go to home position every time we start.
-        # code = arm.set_position(
-        #     x=START_POS_MM[0],
-        #     y=START_POS_MM[1],
-        #     z=START_POS_MM[2],
-        #     roll=START_RPY_DEG[0],
-        #     pitch=START_RPY_DEG[1],
-        #     yaw=START_RPY_DEG[2],
-        #     speed=100,
-        #     wait=True,
-        # )
-        # if code != 0:
-        #     raise RuntimeError(f"xArm set_position failed with code {code}")
+        ret = self.arm.get_position(is_radian=False)
+        if not isinstance(ret, tuple) or len(ret) < 2:
+            raise RuntimeError(f"Unexpected get_position() result: {ret}")
+
+        code, pose = ret[0], ret[1]
+        if code != 0:
+            raise RuntimeError(f"xArm get_position failed with code {code}")
+
+        x, y, z, roll, pitch, yaw = pose[:6]
+        logger.info(
+            "Current pose: x=%.1f mm, y=%.1f mm, z=%.1f mm, roll=%.1f deg, pitch=%.1f deg, yaw=%.1f deg",
+            x, y, z, roll, pitch, yaw,
+        )
+
+        roll = 180
+        pitch = 0
+
+        code = self.arm.set_position(
+            x=x,
+            y=y,
+            z=z,
+            roll=roll,
+            pitch=pitch,
+            yaw=yaw,
+            speed=100,
+            wait=True,
+        )
+
+        if code != 0:
+            raise RuntimeError(f"xArm alignment failed with code {code}")
 
     def enable_cartesian_velocity_mode(self):
         if self.debug:
