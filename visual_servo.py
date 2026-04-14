@@ -107,7 +107,7 @@ class ZEDYOLOServo(CameraWorker):
         except Exception:
             pass
 
-    def execute_threshold_motion(self):
+    def execute_threshold_motion(self, obb=None):
         if self.debug:
             logger.info("[DEBUG] Threshold reached: would execute post-threshold motion")
             return
@@ -134,13 +134,37 @@ class ZEDYOLOServo(CameraWorker):
             x, y, z, roll, pitch, yaw,
         )
 
+        z_grasp = z - GRASP_DESCENT_MM
+
+        # --- Compute grasp yaw to align gripper with plate's shorter axis ---
+        # (fingers contact the midpoints of the two longer edges)
+        # IBVS converges with the plate's w-axis horizontal (theta ≈ 0).
+        #   w >= h → longer axis is horizontal (along theta) → shorter axis at theta + 90°
+        #   w <  h → longer axis is vertical (at theta + 90°) → shorter axis at theta
+        # From the IBVS sign convention (Vc[5] = -kw*theta), the yaw delta is the
+        # negative of the target shorter-axis image angle.  GRASP_YAW_OFFSET_DEG
+        # trims any residual physical mounting offset.
+        grasp_yaw = yaw
+        if obb is not None:
+            _, _, w_obb, h_obb, theta_obb, _, _ = obb
+            if w_obb >= h_obb:
+                shorter_axis_rad = theta_obb + np.pi / 2
+            else:
+                shorter_axis_rad = theta_obb
+            yaw_delta_deg = -float(np.degrees(shorter_axis_rad)) + GRASP_YAW_OFFSET_DEG
+            grasp_yaw = yaw + yaw_delta_deg
+            logger.info(
+                "Plate OBB: w=%.1f h=%.1f theta=%.3f rad → yaw_delta=%.1f° → grasp_yaw=%.1f°",
+                w_obb, h_obb, theta_obb, yaw_delta_deg, grasp_yaw,
+            )
+
         code = self.arm.set_position(
             x=x + 94.3,
             y=y - 66.5,
             z=z,
             roll=roll,
             pitch=pitch,
-            yaw=yaw,
+            yaw=grasp_yaw,
             speed=100,
             wait=True,
         )
@@ -150,10 +174,10 @@ class ZEDYOLOServo(CameraWorker):
         code = self.arm.set_position(
             x=x + 94.3,
             y=y - 66.5,
-            z=-52.7,
+            z=z_grasp,
             roll=roll,
             pitch=pitch,
-            yaw=yaw,
+            yaw=grasp_yaw,
             speed=10,
             wait=True,
         )
@@ -178,19 +202,6 @@ class ZEDYOLOServo(CameraWorker):
         code = self.arm.set_position(
             x=x + 94.3,
             y=y - 66.5,
-            z=0,
-            roll=roll,
-            pitch=pitch,
-            yaw=yaw,
-            speed=10,
-            wait=True,
-        )
-        if code != 0:
-            logger.warning("xArm fourth threshold move failed with code %d", code)
-
-        code = self.arm.set_position(
-            x=x,
-            y=y,
             z=z,
             roll=roll,
             pitch=pitch,
@@ -199,7 +210,7 @@ class ZEDYOLOServo(CameraWorker):
             wait=True,
         )
         if code != 0:
-            logger.warning("xArm fifth threshold move failed with code %d", code)
+            logger.warning("xArm fourth threshold move failed with code %d", code)
 
     def project_gripper_center(self, image_shape):
         H, W = image_shape[:2]
@@ -370,7 +381,7 @@ class ZEDYOLOServo(CameraWorker):
                         2,
                     )
                     if not self.debug:
-                        self.execute_threshold_motion()
+                        self.execute_threshold_motion(obb=obb)
                         break
 
                 if desired_area is None:
