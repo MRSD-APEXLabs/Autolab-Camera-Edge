@@ -134,7 +134,25 @@ class ZEDYOLOServo(CameraWorker):
             x, y, z, roll, pitch, yaw,
         )
 
+        roll = 180
+        pitch = 0
+
         z_grasp = z - GRASP_DESCENT_MM
+
+
+        code = self.arm.set_position(
+            x=x,
+            y=y,
+            z=z,
+            roll=roll,
+            pitch=pitch,
+            yaw=yaw,
+            speed=100,
+            wait=True,
+        )
+
+        if code != 0:
+            raise RuntimeError(f"xArm rotation alignment failed with code {code}")
 
         # --- Compute grasp yaw to align gripper with plate's shorter axis ---
         # (fingers contact the midpoints of the two longer edges)
