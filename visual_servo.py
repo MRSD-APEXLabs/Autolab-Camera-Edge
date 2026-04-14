@@ -206,7 +206,7 @@ class ZEDYOLOServo(CameraWorker):
             roll=roll,
             pitch=pitch,
             yaw=yaw,
-            speed=10,
+            speed=50,
             wait=True,
         )
         if code != 0:
