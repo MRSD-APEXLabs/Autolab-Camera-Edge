@@ -19,15 +19,18 @@ STREAM_PORT = 8766
 RAW_STREAM_PORT = 8767
 
 AREA_STOP_THRESHOLD = 50000.0
-GRASP_DESCENT_MM = 70.0     # fallback fixed descent when depth measurement is unavailable
+GRASP_DESCENT_MM = 70.0     # fallback fixed descent when OBB-based estimate is unavailable
 GRASP_YAW_OFFSET_DEG = 0.0  # additional yaw correction for physical gripper calibration
 
-# Depth-camera-based adaptive descent.
+# OBB-based depth estimation for adaptive descent.
+# Z_mm = sqrt(fx * fy * PLATE_WIDTH_MM * PLATE_HEIGHT_MM / pixel_area)
+# Set to the physical dimensions (mm) of what the servo YOLO model detects.
+# Standard SBS 96-well plate outer footprint: 127.76 × 85.48 mm.
+PLATE_WIDTH_MM = 127.76
+PLATE_HEIGHT_MM = 85.48
 # CAMERA_TO_GRASP_OFFSET_MM: distance (mm) from the ZED right-camera optical center to
-#   the gripper fingertip grasp plane along the camera Z-axis.  The measured depth gives
-#   camera-to-plate distance; subtracting this offset gives the required arm descent.
-#   Calibrate: command a successful grasp and check the logged depth_mm value —
-#   CAMERA_TO_GRASP_OFFSET_MM should equal (depth_mm - actual_descent_used).
+# the gripper fingertip grasp plane along the camera Z-axis.  Subtract from the
+# estimated depth to get the required arm descent.
 CAMERA_TO_GRASP_OFFSET_MM = 115.0
 START_POS_MM = np.array([-2.6, 320.0, 222.0], dtype=np.float64)
 START_RPY_DEG = np.array([-180.0, 0.0, 0.0], dtype=np.float64)

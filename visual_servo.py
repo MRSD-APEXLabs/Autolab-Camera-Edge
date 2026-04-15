@@ -107,12 +107,9 @@ class ZEDYOLOServo(CameraWorker):
         except Exception:
             pass
 
-    def execute_threshold_motion(self, obb=None, depth_mm=None):
+    def execute_threshold_motion(self, obb=None):
         if self.debug:
-            logger.info(
-                "[DEBUG] Threshold reached: depth_mm=%s, would execute post-threshold motion",
-                f"{depth_mm:.1f}" if depth_mm is not None else "None",
-            )
+            logger.info("[DEBUG] Threshold reached: would execute post-threshold motion")
             return
 
         self.stop_robot()
@@ -137,15 +134,25 @@ class ZEDYOLOServo(CameraWorker):
             x, y, z, roll, pitch, yaw,
         )
 
-        if depth_mm is not None:
-            descent_mm = max(10.0, depth_mm - CAMERA_TO_GRASP_OFFSET_MM)
-            logger.info(
-                "Depth from camera: %.1f mm, offset: %.1f mm → descent: %.1f mm",
-                depth_mm, CAMERA_TO_GRASP_OFFSET_MM, descent_mm,
-            )
+        if obb is not None:
+            _, _, w_px, h_px, _, _, _ = obb
+            pixel_area = w_px * h_px
+            if pixel_area > 0:
+                # Pinhole model: Z_mm = sqrt(fx * fy * physical_area_mm2 / pixel_area_px2)
+                estimated_depth_mm = float(
+                    np.sqrt(self.fx * self.fy * PLATE_WIDTH_MM * PLATE_HEIGHT_MM / pixel_area)
+                )
+                descent_mm = max(10.0, estimated_depth_mm - CAMERA_TO_GRASP_OFFSET_MM)
+                logger.info(
+                    "OBB depth estimate: pixel_area=%.0f px² → depth=%.1f mm → descent=%.1f mm",
+                    pixel_area, estimated_depth_mm, descent_mm,
+                )
+            else:
+                descent_mm = GRASP_DESCENT_MM
+                logger.warning("OBB pixel area is zero, using fallback GRASP_DESCENT_MM=%.1f mm", descent_mm)
         else:
             descent_mm = GRASP_DESCENT_MM
-            logger.warning("No valid depth reading, falling back to GRASP_DESCENT_MM=%.1f mm", descent_mm)
+            logger.warning("No OBB at threshold, using fallback GRASP_DESCENT_MM=%.1f mm", descent_mm)
 
         z_grasp = z - descent_mm
 
@@ -378,16 +385,13 @@ class ZEDYOLOServo(CameraWorker):
 
         prev_time = time.time()
         desired_area = None
-        last_valid_depth_mm = None  # most recent in-range depth sample at OBB center
 
         while not self.should_stop():
             right_frame = sl.Mat()
-            depth_frame = sl.Mat()
             with self.grab_lock:
                 err = self.camera.grab(self.runtime)
                 if err == sl.ERROR_CODE.SUCCESS:
                     self.camera.retrieve_image(right_frame, self.view)
-                    self.camera.retrieve_measure(depth_frame, sl.MEASURE.DEPTH)
 
             if err != sl.ERROR_CODE.SUCCESS:
                 time.sleep(0.001)
@@ -415,22 +419,14 @@ class ZEDYOLOServo(CameraWorker):
                     }
                 )
 
-                # Update last valid depth while camera is still within its useful range.
-                err_d, depth_val = depth_frame.get_value(int(obb[0]), int(obb[1]))
-                if err_d == sl.ERROR_CODE.SUCCESS and np.isfinite(depth_val) and depth_val > 0:
-                    last_valid_depth_mm = float(depth_val) * 1000.0
-
                 area = obb[2] * obb[3]
 
                 if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
                     self.threshold_action_done = True
 
-                    depth_mm = last_valid_depth_mm
-
                     cv2.putText(
                         frame,
-                        f"threshold reached: area={area:.0f}"
-                        + (f" depth={depth_mm:.0f}mm" if depth_mm is not None else ""),
+                        f"threshold reached: area={area:.0f}",
                         (20, 40),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         1.0,
@@ -438,7 +434,7 @@ class ZEDYOLOServo(CameraWorker):
                         2,
                     )
                     if not self.debug:
-                        self.execute_threshold_motion(obb=obb, depth_mm=depth_mm)
+                        self.execute_threshold_motion(obb=obb)
                         break
 
                 if desired_area is None:
@@ -476,6 +472,7 @@ class ZEDYOLOServo(CameraWorker):
                     2,
                 )
                 cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
+                draw_obb(frame, u, v, w, h, theta, color=(0, 255, 0), thickness=2)
                 frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
                 cv2.putText(
                     frame,
