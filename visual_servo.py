@@ -158,9 +158,22 @@ class ZEDYOLOServo(CameraWorker):
                 w_obb, h_obb, theta_obb, yaw_delta_deg, grasp_yaw,
             )
 
+        # The nominal offset (dx, dy) was calibrated at the starting yaw.
+        # When grasp_yaw != yaw the end-effector rotates, so rotate the offset
+        # vector by the same delta to keep it aligned in the world frame.
+        dx_nom, dy_nom = 94.3, -66.5
+        yaw_delta_rad = np.radians(grasp_yaw - yaw)
+        cos_d, sin_d = np.cos(yaw_delta_rad), np.sin(yaw_delta_rad)
+        dx = cos_d * dx_nom - sin_d * dy_nom
+        dy = sin_d * dx_nom + cos_d * dy_nom
+        logger.info(
+            "Grasp offset: nominal=(%.1f, %.1f) → rotated=(%.1f, %.1f) mm (yaw_delta=%.1f°)",
+            dx_nom, dy_nom, dx, dy, np.degrees(yaw_delta_rad),
+        )
+
         code = self.arm.set_position(
-            x=x + 94.3,
-            y=y - 66.5,
+            x=x + dx,
+            y=y + dy,
             z=z,
             roll=roll,
             pitch=pitch,
@@ -172,8 +185,8 @@ class ZEDYOLOServo(CameraWorker):
             raise RuntimeError(f"xArm first threshold move failed with code {code}")
 
         code = self.arm.set_position(
-            x=x + 94.3,
-            y=y - 66.5,
+            x=x + dx,
+            y=y + dy,
             z=z_grasp,
             roll=roll,
             pitch=pitch,
@@ -200,8 +213,8 @@ class ZEDYOLOServo(CameraWorker):
         time.sleep(0.5)
 
         code = self.arm.set_position(
-            x=x + 94.3,
-            y=y - 66.5,
+            x=x + dx,
+            y=y + dy,
             z=z,
             roll=roll,
             pitch=pitch,
