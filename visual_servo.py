@@ -176,7 +176,7 @@ class ZEDYOLOServo(CameraWorker):
         # vector by the same delta to keep it aligned in the world frame.
         # dx_nom, dy_nom = 94.3, -66.5
 
-        dx, dy = (94.3, -66.5) if abs(grasp_yaw - yaw) < 10 else (66.5, -94.3)
+        dx, dy = (94.3, -66.5) if abs(grasp_yaw - yaw) < 10 else (90, -55)
 
         # yaw_delta_rad = np.radians(grasp_yaw - yaw)
         # cos_d, sin_d = np.cos(yaw_delta_rad), np.sin(yaw_delta_rad)
