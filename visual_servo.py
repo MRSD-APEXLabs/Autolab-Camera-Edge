@@ -161,15 +161,18 @@ class ZEDYOLOServo(CameraWorker):
         # The nominal offset (dx, dy) was calibrated at the starting yaw.
         # When grasp_yaw != yaw the end-effector rotates, so rotate the offset
         # vector by the same delta to keep it aligned in the world frame.
-        dx_nom, dy_nom = 94.3, -66.5
-        yaw_delta_rad = np.radians(grasp_yaw - yaw)
-        cos_d, sin_d = np.cos(yaw_delta_rad), np.sin(yaw_delta_rad)
-        dx = cos_d * dx_nom - sin_d * dy_nom
-        dy = sin_d * dx_nom + cos_d * dy_nom
-        logger.info(
-            "Grasp offset: nominal=(%.1f, %.1f) → rotated=(%.1f, %.1f) mm (yaw_delta=%.1f°)",
-            dx_nom, dy_nom, dx, dy, np.degrees(yaw_delta_rad),
-        )
+        # dx_nom, dy_nom = 94.3, -66.5
+
+        dx, dy = (94.3, -66.5) if abs(grasp_yaw - yaw) < 10 else (66.5, -94.3)
+
+        # yaw_delta_rad = np.radians(grasp_yaw - yaw)
+        # cos_d, sin_d = np.cos(yaw_delta_rad), np.sin(yaw_delta_rad)
+        # dx = cos_d * dx_nom - sin_d * dy_nom
+        # dy = sin_d * dx_nom + cos_d * dy_nom
+        # logger.info(
+        #     "Grasp offset: nominal=(%.1f, %.1f) → rotated=(%.1f, %.1f) mm (yaw_delta=%.1f°)",
+        #     dx_nom, dy_nom, dx, dy, np.degrees(yaw_delta_rad),
+        # )
 
         code = self.arm.set_position(
             x=x + dx,
