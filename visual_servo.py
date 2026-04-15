@@ -431,8 +431,8 @@ class ZEDYOLOServo(CameraWorker):
 
                 Vg[:3] = np.clip(Vg[:3], -0.08, 0.08)
                 Vg[3:] = np.clip(Vg[3:], -0.40, 0.40)
-                Vg[0] = np.clip(Vg[0], -0.01, 0.01)
-                Vg[1] = np.clip(Vg[1], -0.01, 0.01)
+                Vg[0] = np.clip(Vg[0], -0.02, 0.02)
+                Vg[1] = np.clip(Vg[1], -0.02, 0.02)
                 Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
 
                 logger.debug("clamped Vg: vx=%+.3f, vy=%+.3f, vz=%+.3f", Vg[0], Vg[1], Vg[2])
