@@ -142,9 +142,9 @@ def image_ibvs_command(obb, target_uv, desired_area=None, desired_theta=0.0):
     ez = (desired_area - area) / desired_area
     etheta = wrap_angle_pi(theta - desired_theta)
 
-    kx = 0.6
-    ky = 0.6
-    kz = 0.8
+    kx = 0.8
+    ky = 0.8
+    kz = 2.5
     kw = 1.0
 
     Vc = np.array([kx * ex, -ky * ey, 0.25 * ez, 0.0, 0.0, -kw * etheta], dtype=np.float64)

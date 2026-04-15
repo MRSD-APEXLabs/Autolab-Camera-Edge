@@ -107,9 +107,12 @@ class ZEDYOLOServo(CameraWorker):
         except Exception:
             pass
 
-    def execute_threshold_motion(self, obb=None):
+    def execute_threshold_motion(self, obb=None, depth_mm=None):
         if self.debug:
-            logger.info("[DEBUG] Threshold reached: would execute post-threshold motion")
+            logger.info(
+                "[DEBUG] Threshold reached: depth_mm=%s, would execute post-threshold motion",
+                f"{depth_mm:.1f}" if depth_mm is not None else "None",
+            )
             return
 
         self.stop_robot()
@@ -134,7 +137,17 @@ class ZEDYOLOServo(CameraWorker):
             x, y, z, roll, pitch, yaw,
         )
 
-        z_grasp = z - GRASP_DESCENT_MM
+        if depth_mm is not None:
+            descent_mm = max(10.0, depth_mm - CAMERA_TO_GRASP_OFFSET_MM)
+            logger.info(
+                "Depth from camera: %.1f mm, offset: %.1f mm → descent: %.1f mm",
+                depth_mm, CAMERA_TO_GRASP_OFFSET_MM, descent_mm,
+            )
+        else:
+            descent_mm = GRASP_DESCENT_MM
+            logger.warning("No valid depth reading, falling back to GRASP_DESCENT_MM=%.1f mm", descent_mm)
+
+        z_grasp = z - descent_mm
 
         # --- Compute grasp yaw to align gripper with plate's shorter axis ---
         # (fingers contact the midpoints of the two longer edges)
@@ -365,13 +378,16 @@ class ZEDYOLOServo(CameraWorker):
 
         prev_time = time.time()
         desired_area = None
+        last_valid_depth_mm = None  # most recent in-range depth sample at OBB center
 
         while not self.should_stop():
             right_frame = sl.Mat()
+            depth_frame = sl.Mat()
             with self.grab_lock:
                 err = self.camera.grab(self.runtime)
                 if err == sl.ERROR_CODE.SUCCESS:
                     self.camera.retrieve_image(right_frame, self.view)
+                    self.camera.retrieve_measure(depth_frame, sl.MEASURE.DEPTH)
 
             if err != sl.ERROR_CODE.SUCCESS:
                 time.sleep(0.001)
@@ -399,13 +415,22 @@ class ZEDYOLOServo(CameraWorker):
                     }
                 )
 
+                # Update last valid depth while camera is still within its useful range.
+                err_d, depth_val = depth_frame.get_value(int(obb[0]), int(obb[1]))
+                if err_d == sl.ERROR_CODE.SUCCESS and np.isfinite(depth_val) and depth_val > 0:
+                    last_valid_depth_mm = float(depth_val) * 1000.0
+
                 area = obb[2] * obb[3]
 
                 if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
                     self.threshold_action_done = True
+
+                    depth_mm = last_valid_depth_mm
+
                     cv2.putText(
                         frame,
-                        f"threshold reached: area={area:.0f}",
+                        f"threshold reached: area={area:.0f}"
+                        + (f" depth={depth_mm:.0f}mm" if depth_mm is not None else ""),
                         (20, 40),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         1.0,
@@ -413,7 +438,7 @@ class ZEDYOLOServo(CameraWorker):
                         2,
                     )
                     if not self.debug:
-                        self.execute_threshold_motion(obb=obb)
+                        self.execute_threshold_motion(obb=obb, depth_mm=depth_mm)
                         break
 
                 if desired_area is None:

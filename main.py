@@ -62,14 +62,17 @@ class ModeManager:
             if not self._arm.connected:
                 raise RuntimeError(f"Failed to connect to xArm at {arm_ip}")
 
-        # Open wrist camera (cam1, no depth)
+        # Open wrist camera (cam1, PERFORMANCE depth for grasp descent estimation)
         self._wrist_cam = sl.Camera()
         self._wrist_lock = threading.Lock()
         wrist_init = sl.InitParameters()
         wrist_init.set_from_serial_number(SERIAL_CAM1)
         wrist_init.camera_resolution = sl.RESOLUTION.SVGA
         wrist_init.camera_fps = CAMERA_FPS
-        wrist_init.depth_mode = sl.DEPTH_MODE.NONE
+        wrist_init.depth_mode = sl.DEPTH_MODE.PERFORMANCE
+        wrist_init.coordinate_units = sl.UNIT.METER
+        wrist_init.depth_minimum_distance = 0.3
+        wrist_init.depth_maximum_distance = 1.0
         err = self._wrist_cam.open(wrist_init)
         if err != sl.ERROR_CODE.SUCCESS:
             raise RuntimeError(f"Wrist camera {SERIAL_CAM1} failed to open: {err}")
