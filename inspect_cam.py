@@ -26,7 +26,7 @@ class ZEDInspectWorker(CameraWorker):
         super().__init__("inspect", camera, grab_lock)
         self.debug = debug
         self.stream_hub = stream_hub
-        self.runtime = sl.RuntimeParameters(confidence_threshold=75, texture_confidence_threshold=80)
+        self.runtime = sl.RuntimeParameters(confidence_threshold=90, texture_confidence_threshold=90)
         self.frame_mat = sl.Mat()
         self.pc_mat = sl.Mat()
         self.depth_mat = sl.Mat()
@@ -50,7 +50,7 @@ class ZEDInspectWorker(CameraWorker):
         self.cx = float(left_calib.cx)
         self.cy = float(left_calib.cy)
 
-        self.apriltag_size_m = 0.0725  # tag side length in meters
+        self.apriltag_size_m = 0.0625  # tag side length in meters
 
 
     # -------------------------------------------------------------------------
@@ -441,14 +441,14 @@ class ZEDInspectWorker(CameraWorker):
 
             pc_raw = self.pc_mat.get_data()  # (H, W, 4)
             # Try applying a mask to the pc based on where we know april tags are.
-            if tags:
-                h_pc, w_pc = pc_raw.shape[:2]
-                tag_mask = np.zeros((h_pc, w_pc), dtype=np.uint8)
-                for tag in tags:
-                    corners = np.array(tag["corners"], dtype=np.int32)
-                    cv2.fillPoly(tag_mask, [corners], 255)
-                pc_raw = pc_raw.copy()
-                pc_raw[tag_mask > 0] = np.nan
+            # if tags:
+            #     h_pc, w_pc = pc_raw.shape[:2]
+            #     tag_mask = np.zeros((h_pc, w_pc), dtype=np.uint8)
+            #     for tag in tags:
+            #         corners = np.array(tag["corners"], dtype=np.int32)
+            #         cv2.fillPoly(tag_mask, [corners], 255)
+            #     pc_raw = pc_raw.copy()
+            #     pc_raw[tag_mask > 0] = np.nan
 
             pc = pc_raw.reshape(-1, 4).astype(np.float32)
             valid = (
