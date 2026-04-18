@@ -5,6 +5,7 @@ import pyzed.sl as sl
 
 
 SERIAL_CAM1 = "42757821"
+#SERIAL_CAM1 = "40128964"
 CAMERA_FPS = 60
 
 
@@ -84,7 +85,7 @@ if __name__ == "__main__":
     cam = WristCameraRecorder()
 
     cam.start()
-    time.sleep(100)
+    time.sleep(10)
     cam.stop()
 
     cam.close()
