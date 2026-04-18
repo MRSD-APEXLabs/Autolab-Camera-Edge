@@ -26,7 +26,7 @@ class ZEDInspectWorker(CameraWorker):
         super().__init__("inspect", camera, grab_lock)
         self.debug = debug
         self.stream_hub = stream_hub
-        self.runtime = sl.RuntimeParameters(confidence_threshold=90, texture_confidence_threshold=90)
+        self.runtime = sl.RuntimeParameters(confidence_threshold=92, texture_confidence_threshold=92)
         self.frame_mat = sl.Mat()
         self.pc_mat = sl.Mat()
         self.depth_mat = sl.Mat()
