@@ -36,6 +36,15 @@ def draw_crosshair(img, uv, size=12, color=(0, 255, 255), thickness=2):
     return img
 
 
+def draw_obb(img, cx, cy, w, h, theta, color=(0, 255, 0), thickness=2):
+    cos_t, sin_t = np.cos(theta), np.sin(theta)
+    corners = np.array([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]])
+    R = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
+    pts = (R @ corners.T).T + np.array([cx, cy])
+    cv2.polylines(img, [pts.astype(np.int32)], isClosed=True, color=color, thickness=thickness)
+    return img
+
+
 def draw_velocity_arrow(
     img, center_uv, Vc, scale=600.0, color=(0, 0, 255), thickness=3
 ):
@@ -142,9 +151,9 @@ def image_ibvs_command(obb, target_uv, desired_area=None, desired_theta=0.0):
     ez = (desired_area - area) / desired_area
     etheta = wrap_angle_pi(theta - desired_theta)
 
-    kx = 0.6
-    ky = 0.6
-    kz = 0.8
+    kx = 0.8
+    ky = 0.8
+    kz = 2.5
     kw = 1.0
 
     Vc = np.array([kx * ex, -ky * ey, 0.25 * ez, 0.0, 0.0, -kw * etheta], dtype=np.float64)
@@ -186,6 +195,9 @@ def setup_gripper(arm):
 
 
 def gripper_open(arm):
+    #if code != 0:
+    #    print("Error opening gripper, clearing errors...")
+    clear_errors(arm)
     data = [0x08, 0x10, 0x07, 0x00, 0x00, 0x02, 0x04, 0x00, 0x00, 0x00, 0x00]
     code, ret = arm.getset_tgpio_modbus_data(data, is_transparent_transmission=False)
     print(f"OPEN Gripper: code={code}, ret={ret}")
@@ -195,7 +207,10 @@ def gripper_open(arm):
 
 
 def gripper_close(arm):
-    data = [0x08, 0x10, 0x07, 0x00, 0x00, 0x02, 0x04, 0x00, 0x00, 0x00, 0x9E]
+    #if code != 0:
+    #    print("Error opening gripper, clearing errors...")
+    clear_errors(arm)
+    data = [0x08, 0x10, 0x07, 0x00, 0x00, 0x02, 0x04, 0x00, 0x00, 0x01, 0x5E]
     code, ret = arm.getset_tgpio_modbus_data(data, is_transparent_transmission=False)
     print(f"CLOSE Gripper (158): code={code}, ret={ret}")
     if code != 0:
