@@ -299,6 +299,7 @@ async def raw_stream_handler(ws, *args):
 async def main_async():
     global MANAGER
     MANAGER = ModeManager(ARM_IP, stream_hub=STREAM_HUB, debug=DEBUG)
+    MANAGER.switch_mode("inspect")
 
     control_server = websockets.serve(
         control_handler, "0.0.0.0", CONTROL_PORT, max_size=None
