@@ -154,7 +154,7 @@ class ZEDYOLOServo(CameraWorker):
             descent_mm = GRASP_DESCENT_MM
             logger.warning("No OBB at threshold, using fallback GRASP_DESCENT_MM=%.1f mm", descent_mm)
 
-        z_grasp = z - descent_mm
+        z_grasp = -0.8
 
         # --- Compute grasp yaw to align gripper with plate's shorter axis ---
         # (fingers contact the midpoints of the two longer edges)
@@ -183,8 +183,10 @@ class ZEDYOLOServo(CameraWorker):
         # vector by the same delta to keep it aligned in the world frame.
         # dx_nom, dy_nom = 94.3, -66.5
 
-        dx, dy = (94.3, -66.5) if abs(grasp_yaw - yaw) < 10 else (90, -55)
-
+        dx, dy = (92, -62) if abs(grasp_yaw - yaw) < 10 else (88, -55)
+        z_grasp = -50 if abs(grasp_yaw - yaw) < 10 else z_grasp
+        if y < 0:
+            z_grasp=-17
         # yaw_delta_rad = np.radians(grasp_yaw - yaw)
         # cos_d, sin_d = np.cos(yaw_delta_rad), np.sin(yaw_delta_rad)
         # dx = cos_d * dx_nom - sin_d * dy_nom
@@ -193,6 +195,7 @@ class ZEDYOLOServo(CameraWorker):
         #     "Grasp offset: nominal=(%.1f, %.1f) → rotated=(%.1f, %.1f) mm (yaw_delta=%.1f°)",
         #     dx_nom, dy_nom, dx, dy, np.degrees(yaw_delta_rad),
         # )
+        print(y, z_grasp)
 
         code = self.arm.set_position(
             x=x + dx,
@@ -241,12 +244,26 @@ class ZEDYOLOServo(CameraWorker):
             z=z,
             roll=roll,
             pitch=pitch,
-            yaw=yaw,
+            yaw=grasp_yaw,
             speed=50,
             wait=True,
         )
         if code != 0:
             logger.warning("xArm fourth threshold move failed with code %d", code)
+
+        code = self.arm.set_position(
+            x=x + dx,
+            y=y + dy,
+            z=z,
+            roll=roll,
+            pitch=pitch,
+            yaw=yaw,
+            speed=50,
+            wait=True,
+        )
+        if code != 0:
+            logger.warning("xArm fifth threshold move failed with code %d", code)
+
 
     def project_gripper_center(self, image_shape):
         H, W = image_shape[:2]
@@ -279,6 +296,7 @@ class ZEDYOLOServo(CameraWorker):
         arm.set_mode(0)
         arm.set_state(0)
         time.sleep(0.1)
+        gripper_open(self.arm)
 
         ret = self.arm.get_position(is_radian=False)
         if not isinstance(ret, tuple) or len(ret) < 2:
