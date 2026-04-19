@@ -231,45 +231,59 @@ class ZEDYOLOServo(CameraWorker):
             base2 = int(sum(f2 for _, f2 in valid) / len(valid)) if valid else 0
             logger.info("FSR baseline (%d samples): fsr1=%d fsr2=%d", len(valid), base1, base2)
 
-            gripper_close(self.arm)
-
-            # re-assert mode 0 so arm accepts position commands while gripper closes
-            self.arm.clean_error()
-            self.arm.motion_enable(True)
-            self.arm.set_mode(0)
-            self.arm.set_state(0)
-            time.sleep(0.2)
-
             yaw_rad = np.radians(grasp_yaw)
             c, s = np.cos(yaw_rad), np.sin(yaw_rad)
             world_dir = np.array([c, s, 0.0]) if FSR_FINGER_TOOL_AXIS == "x" else np.array([-s, c, 0.0])
 
-            deadline = time.time() + 7.0
-            while time.time() < deadline:
-                fsr1, fsr2 = gripper_get_fsr(self.arm)
-                if fsr1 is None:
-                    time.sleep(0.3)
-                    continue
+            for close_attempt in range(FSR_CLOSE_NUDGE_RETRIES + 1):
+                if close_attempt > 0:
+                    logger.info("Grasp threshold not met — gripper close+nudge (attempt %d/%d)",
+                                close_attempt, FSR_CLOSE_NUDGE_RETRIES)
 
-                r1 = fsr1 - base1
-                r2 = fsr2 - base2
-                logger.info("FSR during close: fsr1=%d fsr2=%d  (relative: r1=%d r2=%d)", fsr1, fsr2, r1, r2)
-                delta = r1 - r2
-                if abs(delta) > FSR_NUDGE_MIN_DELTA:
-                    signed_mm = -FSR_NUDGE_MM if delta > 0 else +FSR_NUDGE_MM
-                    ret = self.arm.get_position(is_radian=False)
-                    if isinstance(ret, tuple) and len(ret) >= 2 and ret[0] == 0:
-                        cx, cy, cz = ret[1][0], ret[1][1], ret[1][2]
-                        d = world_dir * signed_mm
-                        self.arm.set_position(
-                            x=cx + d[0], y=cy + d[1], z=cz + d[2],
-                            roll=roll, pitch=pitch, yaw=grasp_yaw,
-                            speed=20, wait=True,
-                        )
-                else:
-                    time.sleep(0.1)
+                gripper_close(self.arm)
 
-            logger.info("Final FSR: fsr1=%s fsr2=%s", fsr1, fsr2)
+                # re-assert mode 0 so arm accepts position commands while gripper closes
+                self.arm.clean_error()
+                self.arm.motion_enable(True)
+                self.arm.set_mode(0)
+                self.arm.set_state(0)
+                time.sleep(0.2)
+
+                deadline = time.time() + 7.0
+                while time.time() < deadline:
+                    fsr1, fsr2 = gripper_get_fsr(self.arm)
+                    if fsr1 is None:
+                        time.sleep(0.1)
+                        continue
+
+                    r1 = fsr1 - base1
+                    r2 = fsr2 - base2
+                    logger.info("FSR during close: fsr1=%d fsr2=%d  (relative: r1=%d r2=%d)", fsr1, fsr2, r1, r2)
+                    delta = r1 - r2
+                    if abs(delta) > FSR_NUDGE_MIN_DELTA:
+                        signed_mm = -FSR_NUDGE_MM if delta > 0 else +FSR_NUDGE_MM
+                        ret = self.arm.get_position(is_radian=False)
+                        if isinstance(ret, tuple) and len(ret) >= 2 and ret[0] == 0:
+                            cx, cy, cz = ret[1][0], ret[1][1], ret[1][2]
+                            d = world_dir * signed_mm
+                            self.arm.set_position(
+                                x=cx + d[0], y=cy + d[1], z=cz + d[2],
+                                roll=roll, pitch=pitch, yaw=grasp_yaw,
+                                speed=20, wait=True,
+                            )
+                    else:
+                        time.sleep(0.1)
+
+                r1 = (fsr1 - base1) if fsr1 is not None else 0
+                r2 = (fsr2 - base2) if fsr2 is not None else 0
+                logger.info("Post-close FSR (attempt %d): fsr1=%s fsr2=%s  relative: r1=%d r2=%d",
+                            close_attempt, fsr1, fsr2, r1, r2)
+
+                if max(r1, r2) >= FSR_GRASP_THRESHOLD:
+                    logger.info("Grasp threshold met on attempt %d", close_attempt)
+                    break
+                if close_attempt == FSR_CLOSE_NUDGE_RETRIES:
+                    logger.warning("Grasp threshold not met after %d attempts", FSR_CLOSE_NUDGE_RETRIES + 1)
         except Exception as e:
             logger.warning("gripper_close failed (no gripper?): %s", e)
 
