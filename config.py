@@ -23,6 +23,9 @@ AREA_STOP_THRESHOLD = 50000.0
 GRASP_MAX_RETRIES = 3
 GRASP_RETRY_LIFT_MM = 150.0
 FSR_GRASP_THRESHOLD = 100             # FSR value (0–1023) above which grasp is considered successful
+FSR_NUDGE_MIN_DELTA = 50              # |fsr1 - fsr2| below this → no nudge
+FSR_NUDGE_MM = 5.0                    # mm to nudge per correction
+FSR_FINGER_TOOL_AXIS = "y"            # tool-frame axis separating the two fingers
 GRASP_DESCENT_MM = 70.0     # fallback fixed descent when OBB-based estimate is unavailable
 GRASP_YAW_OFFSET_DEG = 0.0  # additional yaw correction for physical gripper calibration
 

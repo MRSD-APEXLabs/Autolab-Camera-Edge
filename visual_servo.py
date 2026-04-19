@@ -226,9 +226,46 @@ class ZEDYOLOServo(CameraWorker):
         fsr1, fsr2 = None, None
         try:
             gripper_close(self.arm)
-            time.sleep(7.0)
+            time.sleep(3.5)
             fsr1, fsr2 = gripper_get_fsr(self.arm)
             logger.info("Post-close FSR: fsr1=%s, fsr2=%s", fsr1, fsr2)
+
+            if fsr1 is not None and abs(fsr1 - fsr2) > FSR_NUDGE_MIN_DELTA:
+                signed_mm = -FSR_NUDGE_MM if fsr1 > fsr2 else +FSR_NUDGE_MM
+                logger.info("FSR imbalance (fsr1=%d fsr2=%d) → nudge %+.1f mm on tool-%s",
+                            fsr1, fsr2, signed_mm, FSR_FINGER_TOOL_AXIS)
+
+                self.arm.clean_error()
+                self.arm.motion_enable(True)
+                self.arm.set_mode(0)
+                self.arm.set_state(0)
+                time.sleep(0.3)
+
+                yaw_rad = np.radians(grasp_yaw)
+                c, s = np.cos(yaw_rad), np.sin(yaw_rad)
+                if FSR_FINGER_TOOL_AXIS == "x":
+                    world_dir = np.array([c, s, 0.0])
+                else:
+                    world_dir = np.array([-s, c, 0.0])
+                delta = world_dir * signed_mm
+
+                ret = self.arm.get_position(is_radian=False)
+                if isinstance(ret, tuple) and len(ret) >= 2 and ret[0] == 0:
+                    cx, cy, cz = ret[1][0], ret[1][1], ret[1][2]
+                    code = self.arm.set_position(
+                        x=cx + delta[0], y=cy + delta[1], z=cz + delta[2],
+                        roll=roll, pitch=pitch, yaw=grasp_yaw,
+                        speed=20, wait=True,
+                    )
+                    if code == 0:
+                        gripper_close(self.arm)
+                        time.sleep(2.0)
+                        fsr1, fsr2 = gripper_get_fsr(self.arm)
+                        logger.info("Post-nudge FSR: fsr1=%s, fsr2=%s", fsr1, fsr2)
+                    else:
+                        logger.warning("FSR nudge move failed: code=%d", code)
+                else:
+                    logger.warning("FSR nudge: get_position failed: %s", ret)
         except Exception as e:
             logger.warning("gripper_close failed (no gripper?): %s", e)
 
