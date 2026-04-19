@@ -301,7 +301,7 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             logger.warning("xArm fifth threshold move failed with code %d", code)
 
-        return fsr1, fsr2
+        return gripper_get_fsr(self.arm)
 
     def _lift_for_retry(self):
         self.arm.clean_error()
