@@ -129,6 +129,8 @@ class ZEDYOLOServo(CameraWorker):
             raise RuntimeError(f"xArm get_position failed with code {code}")
 
         x, y, z, roll, pitch, yaw = pose[:6]
+        roll = 180
+        pitch = 0
         logger.info(
             "Current pose: x=%.1f mm, y=%.1f mm, z=%.1f mm, roll=%.1f deg, pitch=%.1f deg, yaw=%.1f deg",
             x, y, z, roll, pitch, yaw,
