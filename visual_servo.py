@@ -223,7 +223,7 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             raise RuntimeError(f"xArm second threshold move failed with code {code}")
 
-        fsr1, fsr2 = None, None
+        fsr1, fsr2, r1, r2 = None, None, None, None
         try:
             samples = [gripper_get_fsr(self.arm) for _ in range(FSR_BASELINE_SAMPLES)]
             valid = [(f1, f2) for f1, f2 in samples if f1 is not None]
@@ -323,7 +323,7 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             logger.warning("xArm fifth threshold move failed with code %d", code)
 
-        return gripper_get_fsr(self.arm)
+        return r1, r2
 
     def _lift_for_retry(self):
         self.arm.clean_error()
