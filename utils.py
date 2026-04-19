@@ -215,7 +215,7 @@ def gripper_close(arm):
     #if code != 0:
     #    print("Error opening gripper, clearing errors...")
     clear_errors(arm)
-    data = [0x08, 0x10, 0x07, 0x00, 0x00, 0x02, 0x04, 0x00, 0x00, 0x01, 0x5E]
+    data = [0x08, 0x10, 0x07, 0x00, 0x00, 0x02, 0x04, 0x00, 0x00, 0x01, 0x7c]
     code, ret = arm.getset_tgpio_modbus_data(data, is_transparent_transmission=False)
     print(f"CLOSE Gripper (158): code={code}, ret={ret}")
     if code != 0:
