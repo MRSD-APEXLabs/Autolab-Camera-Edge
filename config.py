@@ -19,6 +19,10 @@ STREAM_PORT = 8766
 RAW_STREAM_PORT = 8767
 
 AREA_STOP_THRESHOLD = 50000.0
+
+GRASP_MAX_RETRIES = 3
+GRASP_RETRY_LIFT_MM = 150.0
+FSR_GRASP_THRESHOLD = 100             # FSR value (0–1023) above which grasp is considered successful
 GRASP_DESCENT_MM = 70.0     # fallback fixed descent when OBB-based estimate is unavailable
 GRASP_YAW_OFFSET_DEG = 0.0  # additional yaw correction for physical gripper calibration
 
