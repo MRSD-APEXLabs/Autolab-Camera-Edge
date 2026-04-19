@@ -225,6 +225,12 @@ class ZEDYOLOServo(CameraWorker):
 
         fsr1, fsr2 = None, None
         try:
+            samples = [gripper_get_fsr(self.arm) for _ in range(FSR_BASELINE_SAMPLES)]
+            valid = [(f1, f2) for f1, f2 in samples if f1 is not None]
+            base1 = int(sum(f1 for f1, _ in valid) / len(valid)) if valid else 0
+            base2 = int(sum(f2 for _, f2 in valid) / len(valid)) if valid else 0
+            logger.info("FSR baseline (%d samples): fsr1=%d fsr2=%d", len(valid), base1, base2)
+
             gripper_close(self.arm)
 
             # re-assert mode 0 so arm accepts position commands while gripper closes
@@ -245,8 +251,10 @@ class ZEDYOLOServo(CameraWorker):
                     time.sleep(0.3)
                     continue
 
-                logger.info("FSR during close: fsr1=%d fsr2=%d", fsr1, fsr2)
-                delta = fsr1 - fsr2
+                r1 = fsr1 - base1
+                r2 = fsr2 - base2
+                logger.info("FSR during close: fsr1=%d fsr2=%d  (relative: r1=%d r2=%d)", fsr1, fsr2, r1, r2)
+                delta = r1 - r2
                 if abs(delta) > FSR_NUDGE_MIN_DELTA:
                     signed_mm = -FSR_NUDGE_MM if delta > 0 else +FSR_NUDGE_MM
                     ret = self.arm.get_position(is_radian=False)
@@ -261,7 +269,7 @@ class ZEDYOLOServo(CameraWorker):
                 else:
                     time.sleep(0.1)
 
-            logger.info("Final FSR in nudge loop: fsr1=%s fsr2=%s", fsr1, fsr2)
+            logger.info("Final FSR: fsr1=%s fsr2=%s", fsr1, fsr2)
         except Exception as e:
             logger.warning("gripper_close failed (no gripper?): %s", e)
 
