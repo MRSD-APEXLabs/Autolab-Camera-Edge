@@ -226,7 +226,7 @@ class ZEDYOLOServo(CameraWorker):
         fsr1, fsr2 = None, None
         try:
             gripper_close(self.arm)
-            time.sleep(3.0)
+            time.sleep(7.0)
             fsr1, fsr2 = gripper_get_fsr(self.arm)
             logger.info("Post-close FSR: fsr1=%s, fsr2=%s", fsr1, fsr2)
         except Exception as e:
