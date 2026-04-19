@@ -279,7 +279,7 @@ class ZEDYOLOServo(CameraWorker):
                 logger.info("Post-close FSR (attempt %d): fsr1=%s fsr2=%s  relative: r1=%d r2=%d",
                             close_attempt, fsr1, fsr2, r1, r2)
 
-                if fsr1 is not None and (fsr1 > FSR_GRASP_THRESHOLD and fsr2 > FSR_GRASP_THRESHOLD):
+                if r1 > FSR_GRASP_THRESHOLD and r2 > FSR_GRASP_THRESHOLD:
                     logger.info("Grasp threshold met on attempt %d", close_attempt)
                     break
                 if close_attempt == FSR_CLOSE_NUDGE_RETRIES:
