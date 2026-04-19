@@ -259,7 +259,7 @@ class ZEDYOLOServo(CameraWorker):
                             speed=20, wait=True,
                         )
                 else:
-                    time.sleep(0.3)
+                    time.sleep(0.1)
 
             logger.info("Final FSR in nudge loop: fsr1=%s fsr2=%s", fsr1, fsr2)
         except Exception as e:
