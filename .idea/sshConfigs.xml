@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="SshConfigs">
-    <configs>
-      <sshConfig authType="PASSWORD" host="xavier.autolab" id="3b6febe3-1a3d-4cc1-aae3-2578a02385da" port="22" nameFormat="DESCRIPTIVE" username="autolab" useOpenSSHConfig="true" />
-    </configs>
-  </component>
-</project>
