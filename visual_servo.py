@@ -261,7 +261,7 @@ class ZEDYOLOServo(CameraWorker):
                 else:
                     time.sleep(0.3)
 
-            logger.info("Final FSR: fsr1=%s fsr2=%s", fsr1, fsr2)
+            logger.info("Final FSR in nudge loop: fsr1=%s fsr2=%s", fsr1, fsr2)
         except Exception as e:
             logger.warning("gripper_close failed (no gripper?): %s", e)
 
