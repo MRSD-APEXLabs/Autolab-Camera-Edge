@@ -223,11 +223,15 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             raise RuntimeError(f"xArm second threshold move failed with code {code}")
 
+        fsr1, fsr2 = None, None
         try:
             gripper_close(self.arm)
+            time.sleep(3.0)
+            fsr1, fsr2 = gripper_get_fsr(self.arm)
+            logger.info("Post-close FSR: fsr1=%s, fsr2=%s", fsr1, fsr2)
         except Exception as e:
             logger.warning("gripper_close failed (no gripper?): %s", e)
-        time.sleep(5)
+
 
         # Re-assert mode 0 before moving back up: gripper_close (or gripping a
         # physical object) can leave the arm in an error/mode-1 state.
@@ -264,6 +268,31 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             logger.warning("xArm fifth threshold move failed with code %d", code)
 
+        return fsr1, fsr2
+
+    def _lift_for_retry(self):
+        self.arm.clean_error()
+        self.arm.clean_warn()
+        self.arm.motion_enable(True)
+        self.arm.set_mode(0)
+        self.arm.set_state(0)
+        time.sleep(0.3)
+
+        ret = self.arm.get_position(is_radian=False)
+        if not isinstance(ret, tuple) or len(ret) < 2 or ret[0] != 0:
+            raise RuntimeError(f"get_position failed during retry lift: {ret}")
+        x, y, z, roll, pitch, yaw = ret[1][:6]
+
+        code = self.arm.set_position(
+            x=x, y=y, z=z + GRASP_RETRY_LIFT_MM,
+            roll=roll, pitch=pitch, yaw=yaw,
+            speed=100, wait=True,
+        )
+        if code != 0:
+            raise RuntimeError(f"retry lift failed with code {code}")
+
+        gripper_open(self.arm)
+        logger.info("Retry lift complete: z %.1f → %.1f mm", z, z + GRASP_RETRY_LIFT_MM)
 
     def project_gripper_center(self, image_shape):
         H, W = image_shape[:2]
@@ -402,143 +431,174 @@ class ZEDYOLOServo(CameraWorker):
         self.enable_cartesian_velocity_mode()
 
         prev_time = time.time()
-        desired_area = None
 
-        while not self.should_stop():
-            right_frame = sl.Mat()
-            with self.grab_lock:
-                err = self.camera.grab(self.runtime)
-                if err == sl.ERROR_CODE.SUCCESS:
-                    self.camera.retrieve_image(right_frame, self.view)
+        for attempt in range(GRASP_MAX_RETRIES + 1):
+            desired_area = None
+            self.threshold_action_done = False
+            grasp_succeeded = False
 
-            if err != sl.ERROR_CODE.SUCCESS:
-                time.sleep(0.001)
-                continue
+            while not self.should_stop():
+                right_frame = sl.Mat()
+                with self.grab_lock:
+                    err = self.camera.grab(self.runtime)
+                    if err == sl.ERROR_CODE.SUCCESS:
+                        self.camera.retrieve_image(right_frame, self.view)
 
-            t0 = time.time()
-            frame = cv2.cvtColor(right_frame.get_data(), cv2.COLOR_BGRA2BGR)
-            t1 = time.time()
+                if err != sl.ERROR_CODE.SUCCESS:
+                    time.sleep(0.001)
+                    continue
 
-            results = self.model(frame, verbose=False)
-            t2 = time.time()
+                t0 = time.time()
+                frame = cv2.cvtColor(right_frame.get_data(), cv2.COLOR_BGRA2BGR)
+                t1 = time.time()
 
-            obb = best_obb_from_results(results)
-            target_uv = self.project_gripper_center(frame.shape)
-            detections = []
+                results = self.model(frame, verbose=False)
+                t2 = time.time()
 
-            if obb is not None:
-                detections.append(
-                    {
-                        "center": [float(obb[0]), float(obb[1])],
-                        "size": [float(obb[2]), float(obb[3])],
-                        "theta": float(obb[4]),
-                        "conf": float(obb[5]),
-                        "cls_id": int(obb[6]),
-                    }
-                )
+                obb = best_obb_from_results(results)
+                target_uv = self.project_gripper_center(frame.shape)
+                detections = []
 
-                area = obb[2] * obb[3]
+                if obb is not None:
+                    detections.append(
+                        {
+                            "center": [float(obb[0]), float(obb[1])],
+                            "size": [float(obb[2]), float(obb[3])],
+                            "theta": float(obb[4]),
+                            "conf": float(obb[5]),
+                            "cls_id": int(obb[6]),
+                        }
+                    )
 
-                if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
-                    self.threshold_action_done = True
+                    area = obb[2] * obb[3]
 
+                    if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
+                        self.threshold_action_done = True
+
+                        cv2.putText(
+                            frame,
+                            f"threshold reached: area={area:.0f}",
+                            (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 0, 255),
+                            2,
+                        )
+                        if not self.debug:
+                            fsr1, fsr2 = self.execute_threshold_motion(obb=obb)
+                            if fsr1 is not None and (fsr1 > FSR_GRASP_THRESHOLD or fsr2 > FSR_GRASP_THRESHOLD):
+                                logger.info(
+                                    "Grasp check: fsr1=%d fsr2=%d > threshold=%d — succeeded",
+                                    fsr1, fsr2, FSR_GRASP_THRESHOLD,
+                                )
+                                grasp_succeeded = True
+                            else:
+                                logger.warning(
+                                    "Grasp check: fsr1=%s fsr2=%s <= threshold=%d — failed (empty gripper)",
+                                    fsr1, fsr2, FSR_GRASP_THRESHOLD,
+                                )
+                            break
+
+                    if desired_area is None:
+                        desired_area = area
+
+                    Vc, (u, v, w, h, theta, conf, cls_id) = image_ibvs_command(
+                        obb=obb,
+                        target_uv=target_uv,
+                        desired_area=desired_area,
+                        desired_theta=0.0,
+                    )
+
+                    Vg = self.Ad_g_c @ Vc
+                    Vg[0] *= -1
+
+                    Vg[:3] = np.clip(Vg[:3], -0.08, 0.08)
+                    Vg[3:] = np.clip(Vg[3:], -0.40, 0.40)
+                    Vg[0] = np.clip(Vg[0], -0.02, 0.02)
+                    Vg[1] = np.clip(Vg[1], -0.02, 0.02)
+                    Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
+
+                    logger.debug("clamped Vg: vx=%+.3f, vy=%+.3f, vz=%+.3f", Vg[0], Vg[1], Vg[2])
+                    self.send_velocity_to_robot(Vg)
+
+                    draw_crosshair(
+                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                    )
                     cv2.putText(
                         frame,
-                        f"threshold reached: area={area:.0f}",
+                        "gripper target",
+                        (int(target_uv[0]) + 18, int(target_uv[1]) - 18),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
+                    cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
+                    draw_obb(frame, u, v, w, h, theta, color=(0, 255, 0), thickness=2)
+                    frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
+                    cv2.putText(
+                        frame,
+                        f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}",
+                        (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (0, 255, 0),
+                        2,
+                    )
+                else:
+                    self.stop_robot()
+                    draw_crosshair(
+                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                    )
+                    cv2.putText(
+                        frame,
+                        "no detection",
                         (20, 40),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         1.0,
                         (0, 0, 255),
                         2,
                     )
-                    if not self.debug:
-                        self.execute_threshold_motion(obb=obb)
-                        break
 
-                if desired_area is None:
-                    desired_area = area
+                t3 = time.time()
+                fps = 1.0 / max((t3 - prev_time), 1e-6)
+                prev_time = t3
 
-                Vc, (u, v, w, h, theta, conf, cls_id) = image_ibvs_command(
-                    obb=obb,
-                    target_uv=target_uv,
-                    desired_area=desired_area,
-                    desired_theta=0.0,
+                img_b64 = encode_jpeg_b64(frame)
+                self.stream_hub.publish(
+                    "servo",
+                    {
+                        "type": "servo_frame",
+                        "image_jpeg_b64": img_b64,
+                        "detections": detections,
+                        "target_uv": [float(target_uv[0]), float(target_uv[1])],
+                        "fps": float(fps),
+                        "capture_ms": float((t1 - t0) * 1000.0),
+                        "inference_ms": float((t2 - t1) * 1000.0),
+                        "post_ms": float((t3 - t2) * 1000.0),
+                    },
                 )
 
-                Vg = self.Ad_g_c @ Vc
-                Vg[0] *= -1
-
-                Vg[:3] = np.clip(Vg[:3], -0.08, 0.08)
-                Vg[3:] = np.clip(Vg[3:], -0.40, 0.40)
-                Vg[0] = np.clip(Vg[0], -0.02, 0.02)
-                Vg[1] = np.clip(Vg[1], -0.02, 0.02)
-                Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
-
-                logger.debug("clamped Vg: vx=%+.3f, vy=%+.3f, vz=%+.3f", Vg[0], Vg[1], Vg[2])
-                self.send_velocity_to_robot(Vg)
-
-                draw_crosshair(
-                    frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                logger.debug(
+                    "capture=%.1fms  inference=%.1fms  post=%.1fms  fps=%.1f",
+                    (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0, fps,
                 )
-                cv2.putText(
-                    frame,
-                    "gripper target",
-                    (int(target_uv[0]) + 18, int(target_uv[1]) - 18),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 255, 255),
-                    2,
-                )
-                cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
-                draw_obb(frame, u, v, w, h, theta, color=(0, 255, 0), thickness=2)
-                frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
-                cv2.putText(
-                    frame,
-                    f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}",
-                    (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.0,
-                    (0, 255, 0),
-                    2,
-                )
+
+            # --- post-servo-loop: retry logic ---
+            if self.should_stop():
+                break
+
+            if grasp_succeeded or self.debug:
+                break
+
+            if attempt < GRASP_MAX_RETRIES:
+                logger.info("Grasp failed — retry %d/%d: lifting %.0f mm and re-running servo",
+                            attempt + 1, GRASP_MAX_RETRIES, GRASP_RETRY_LIFT_MM)
+                self._lift_for_retry()
+                self.enable_cartesian_velocity_mode()
             else:
-                self.stop_robot()
-                draw_crosshair(
-                    frame, target_uv, size=16, color=(0, 255, 255), thickness=2
-                )
-                cv2.putText(
-                    frame,
-                    "no detection",
-                    (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.0,
-                    (0, 0, 255),
-                    2,
-                )
-
-            t3 = time.time()
-            fps = 1.0 / max((t3 - prev_time), 1e-6)
-            prev_time = t3
-
-            img_b64 = encode_jpeg_b64(frame)
-            self.stream_hub.publish(
-                "servo",
-                {
-                    "type": "servo_frame",
-                    "image_jpeg_b64": img_b64,
-                    "detections": detections,
-                    "target_uv": [float(target_uv[0]), float(target_uv[1])],
-                    "fps": float(fps),
-                    "capture_ms": float((t1 - t0) * 1000.0),
-                    "inference_ms": float((t2 - t1) * 1000.0),
-                    "post_ms": float((t3 - t2) * 1000.0),
-                },
-            )
-
-            logger.debug(
-                "capture=%.1fms  inference=%.1fms  post=%.1fms  fps=%.1f",
-                (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0, fps,
-            )
+                logger.warning("Grasp failed after %d retries — giving up", GRASP_MAX_RETRIES)
+                break
 
         logger.info("servo run finished")
 
