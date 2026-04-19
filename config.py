@@ -22,7 +22,7 @@ AREA_STOP_THRESHOLD = 50000.0
 
 GRASP_MAX_RETRIES = 3
 GRASP_RETRY_LIFT_MM = 150.0
-FSR_GRASP_THRESHOLD = 100             # FSR value (0–1023) above which grasp is considered successful
+FSR_GRASP_THRESHOLD = 350             # FSR value (0–1023) above which grasp is considered successful
 FSR_BASELINE_SAMPLES = 5              # readings averaged for pre-close baseline
 FSR_CLOSE_NUDGE_RETRIES = 2          # re-close + nudge attempts if grasp threshold not met
 FSR_NUDGE_MIN_DELTA = 150              # |fsr1 - fsr2| below this → no nudge
