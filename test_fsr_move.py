@@ -17,7 +17,7 @@ from config import ARM_IP
 
 # --- tunables ---
 NUDGE_MM         = 5.0   # mm per nudge
-FINGER_TOOL_AXIS = "x"   # tool-frame axis that separates the two fingers ("x" or "y")
+FINGER_TOOL_AXIS = "y"   # tool-frame axis that separates the two fingers ("x" or "y")
 N_SAMPLES        = 10    # total FSR readings
 LOOP_HZ          = 2     # readings per second
 FSR_MIN_DELTA    = 50    # skip move if |fsr1 - fsr2| < this
@@ -87,11 +87,11 @@ def main():
             if abs(delta) < FSR_MIN_DELTA:
                 print("           balanced / below threshold — no move")
             elif delta > 0:
-                print(f"           FSR1 dominant → +{NUDGE_MM}mm along tool-{FINGER_TOOL_AXIS}")
-                nudge(arm, +NUDGE_MM)
-            else:
-                print(f"           FSR2 dominant → -{NUDGE_MM}mm along tool-{FINGER_TOOL_AXIS}")
+                print(f"           FSR1 dominant → -{NUDGE_MM}mm along tool-{FINGER_TOOL_AXIS}")
                 nudge(arm, -NUDGE_MM)
+            else:
+                print(f"           FSR2 dominant → +{NUDGE_MM}mm along tool-{FINGER_TOOL_AXIS}")
+                nudge(arm, +NUDGE_MM)
 
             time.sleep(1.0 / LOOP_HZ)
 
