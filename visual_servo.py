@@ -188,7 +188,7 @@ class ZEDYOLOServo(CameraWorker):
         dx, dy = (92, -62) if abs(grasp_yaw - yaw) < 10 else (88, -55)
         z_grasp = -50 if abs(grasp_yaw - yaw) < 10 else z_grasp
         if y < 0:
-            z_grasp=-17
+            z_grasp=-15
         # yaw_delta_rad = np.radians(grasp_yaw - yaw)
         # cos_d, sin_d = np.cos(yaw_delta_rad), np.sin(yaw_delta_rad)
         # dx = cos_d * dx_nom - sin_d * dy_nom
