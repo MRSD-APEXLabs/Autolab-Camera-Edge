@@ -583,6 +583,14 @@ class ZEDYOLOServo(CameraWorker):
             gripper_open(self.arm)
 
         self.arm.connect()
+
+        _ret = self.arm.get_position(is_radian=False)
+        if isinstance(_ret, tuple) and len(_ret) >= 2 and _ret[0] == 0:
+            _initial_pose = _ret[1][:6]
+        else:
+            _initial_pose = None
+            logger.warning("Could not read initial pose at run start: %s", _ret)
+
         self.move_to_start_pose()
         self.enable_cartesian_velocity_mode()
 
@@ -755,6 +763,27 @@ class ZEDYOLOServo(CameraWorker):
             else:
                 logger.warning("Grasp failed after %d retries — giving up", GRASP_MAX_RETRIES)
                 break
+
+        if _initial_pose is not None and not self.debug:
+            try:
+                self.arm.clean_error()
+                self.arm.clean_warn()
+                self.arm.motion_enable(True)
+                self.arm.set_mode(0)
+                self.arm.set_state(0)
+                time.sleep(0.3)
+                ix, iy, iz, iroll, ipitch, iyaw = _initial_pose
+                code = self.arm.set_position(
+                    x=ix, y=iy, z=iz,
+                    roll=iroll, pitch=ipitch, yaw=iyaw,
+                    speed=100, wait=True,
+                )
+                if code != 0:
+                    logger.warning("Return to initial pose failed: code=%d", code)
+                else:
+                    logger.info("Returned to initial pose: x=%.1f y=%.1f z=%.1f", ix, iy, iz)
+            except Exception as e:
+                logger.exception("Return to initial pose raised: %s", e)
 
         logger.info("servo run finished")
 
