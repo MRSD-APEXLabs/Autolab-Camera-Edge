@@ -86,27 +86,31 @@ class ZEDYOLOServo(CameraWorker):
     def cleanup(self):
         try:
             self.stop_robot()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("stop robot failed: %s", e)
 
-        try:
-            if self.arm is not None:
+        if self.arm is not None:
+            try:
                 # Use mode 1 (online trajectory planning) so MoveIt/ROS2 can
                 # reactivate its controller after servo exits.  Mode 0 leaves
                 # the arm in a state the xarm_ros2 driver cannot take over from.
-                self.arm.set_mode(0)     # exit mode 5 before any set_state calls
+                c = self.arm.set_mode(0)
+                logger.info("cleanup set_mode(0): code=%s", c)
                 time.sleep(0.3)
                 self.arm.clean_error()
                 self.arm.clean_warn()
-                self.arm.set_state(0)
+                c = self.arm.set_state(0)
+                logger.info("cleanup set_state(0) after mode 0: code=%s", c)
                 time.sleep(0.2)
                 self.arm.motion_enable(True)
-                self.arm.set_mode(1)
-                self.arm.set_state(0)
+                c = self.arm.set_mode(1)
+                logger.info("cleanup set_mode(1): code=%s", c)
+                c = self.arm.set_state(0)
+                logger.info("cleanup set_state(0) after mode 1: code=%s", c)
                 time.sleep(0.5)
                 self.arm.disconnect()
-        except Exception:
-            pass
+            except Exception as e:
+                logger.exception("cleanup arm reset failed: %s", e)
 
         try:
             cv2.destroyWindow("visual_servoing_right")
