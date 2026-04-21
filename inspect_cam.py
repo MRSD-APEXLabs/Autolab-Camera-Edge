@@ -410,7 +410,7 @@ class ZEDInspectWorker(CameraWorker):
                 theta = det["theta"]
                 conf = det["conf"]
                 label = det["name"]
-                if conf < 0.45:
+                if conf < 0.75:
                     continue
                 cv2.circle(frame, (int(cx), int(cy)), 5, (255, 255, 0), -1)
                 cv2.putText(
@@ -482,7 +482,7 @@ class ZEDInspectWorker(CameraWorker):
             )
             logger.debug(
                 "fps=%.1f  wellplates=%d  apriltags=%d  pts=%d",
-                fps, len(dets), len(tags), len(pc),
+                fps, len(dets_3d), len(tags), len(pc),
             )
 
         logger.info("inspect run finished")

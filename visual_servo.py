@@ -315,7 +315,7 @@ class ZEDYOLOServo(CameraWorker):
         code = self.arm.set_position(
             x=x + dx,
             y=y + dy,
-            z=z,
+            z=z + 100,
             roll=roll,
             pitch=pitch,
             yaw=yaw,
