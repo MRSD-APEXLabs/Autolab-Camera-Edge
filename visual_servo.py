@@ -94,14 +94,14 @@ class ZEDYOLOServo(CameraWorker):
                 # Use mode 1 (online trajectory planning) so MoveIt/ROS2 can
                 # reactivate its controller after servo exits.  Mode 0 leaves
                 # the arm in a state the xarm_ros2 driver cannot take over from.
-                c = self.arm.set_mode(0)
-                logger.info("cleanup set_mode(0): code=%s", c)
-                time.sleep(0.3)
+                # c = self.arm.set_mode(0)
+                # logger.info("cleanup set_mode(0): code=%s", c)
+                # time.sleep(0.3)
                 self.arm.clean_error()
                 self.arm.clean_warn()
-                c = self.arm.set_state(0)
-                logger.info("cleanup set_state(0) after mode 0: code=%s", c)
-                time.sleep(0.2)
+                # c = self.arm.set_state(0)
+                # logger.info("cleanup set_state(0) after mode 0: code=%s", c)
+                # time.sleep(0.2)
                 self.arm.motion_enable(True)
                 c = self.arm.set_mode(1)
                 logger.info("cleanup set_mode(1): code=%s", c)
@@ -110,7 +110,7 @@ class ZEDYOLOServo(CameraWorker):
                 time.sleep(0.5)
                 # NOTE: not disconnecting — disconnect() may reset arm mode,
                 # preventing xarm_ros2 from detecting mode 1 and reactivating controller
-                # self.arm.disconnect()
+                #self.arm.disconnect()
             except Exception as e:
                 logger.exception("cleanup arm reset failed: %s", e)
 
@@ -784,7 +784,8 @@ class ZEDYOLOServo(CameraWorker):
                     logger.info("Returned to initial pose: x=%.1f y=%.1f z=%.1f", ix, iy, iz)
             except Exception as e:
                 logger.exception("Return to initial pose raised: %s", e)
-
+        self.arm.set_mode(1)
+        print("Current Mode:", self.arm.mode)
         logger.info("servo run finished")
 
     def _run(self):
