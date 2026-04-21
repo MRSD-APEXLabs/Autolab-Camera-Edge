@@ -85,7 +85,7 @@ if __name__ == "__main__":
     cam = WristCameraRecorder()
 
     cam.start()
-    time.sleep(10)
+    time.sleep(40)
     cam.stop()
 
     cam.close()
