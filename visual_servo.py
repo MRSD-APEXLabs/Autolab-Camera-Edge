@@ -96,9 +96,12 @@ class ZEDYOLOServo(CameraWorker):
                 # the arm in a state the xarm_ros2 driver cannot take over from.
                 self.arm.clean_error()
                 self.arm.clean_warn()
+                self.arm.set_mode(0)
+                self.arm.set_state(0)
                 self.arm.set_mode(1)
                 self.arm.set_state(0)
                 self.arm.disconnect()
+                print("getting in here")
         except Exception:
             pass
 
@@ -108,8 +111,8 @@ class ZEDYOLOServo(CameraWorker):
             pass
         
     
-    def get_pose(self, arm):
-        ret = arm.get_position(is_radian=False)
+    def get_pose(self):
+        ret = self.arm.get_position(is_radian=False)
         if not isinstance(ret, tuple) or len(ret) < 2 or ret[0] != 0:
             raise RuntimeError(f"get_position failed: {ret}")
         return ret[1][:6]  # x, y, z, roll, pitch, yaw (degrees)
@@ -128,13 +131,13 @@ class ZEDYOLOServo(CameraWorker):
         raise ValueError(f"Unknown axis: {axis}")
 
 
-    def nudge(self, arm, signed_mm):
-        clear_errors(arm)
-        arm.motion_enable(True)
-        arm.set_mode(0)
-        arm.set_state(0)
+    def nudge(self, signed_mm):
+        clear_errors(self.arm)
+        self.arm.motion_enable(True)
+        self.arm.set_mode(0)
+        self.arm.set_state(0)
         
-        x, y, z, roll, pitch, yaw = self.get_pose(arm)
+        x, y, z, roll, pitch, yaw = self.get_pose()
         direction = self.tool_axis_in_world(yaw, FINGER_TOOL_AXIS)
         delta = direction * signed_mm
         print(
@@ -142,8 +145,8 @@ class ZEDYOLOServo(CameraWorker):
             f"dx={delta[0]:+.2f} dy={delta[1]:+.2f} dz={delta[2]:+.2f}"
         )
 
-        print("state:", arm.get_state(), "err:", arm.get_err_warn_code())
-        code = arm.set_position(
+        print("state:", self.arm.get_state(), "err:", self.arm.get_err_warn_code())
+        code = self.arm.set_position(
             x=x + delta[0], y=y + delta[1], z=z + delta[2],
             roll=roll, pitch=pitch, yaw=yaw,
             speed=30, wait=True,
@@ -299,12 +302,12 @@ class ZEDYOLOServo(CameraWorker):
 
                 if fsr1_hit and not fsr2_hit:
                     print(f"           FSR1 near {TARGET_PRESSURE_1} and FSR2 not — nudge toward FSR2")
-                    self.nudge(self.arm, -NUDGE_MM)
+                    self.nudge(-NUDGE_MM)
                     gripper_val += GRIPPER_STEP// 4
                     gripper_set(self.arm, gripper_val)
                 elif fsr2_hit and not fsr1_hit:
                     print(f"           FSR2 near {TARGET_PRESSURE_2} and FSR1 not — nudge toward FSR1")
-                    self.nudge(self.arm, +NUDGE_MM)
+                    self.nudge(+NUDGE_MM)
                     gripper_val += GRIPPER_STEP// 4
                     gripper_set(self.arm, gripper_val)
                 else:
@@ -401,7 +404,7 @@ class ZEDYOLOServo(CameraWorker):
         code = self.arm.set_position(
             x=x + dx,
             y=y + dy,
-            z=z,
+            z=z+100,
             roll=roll,
             pitch=pitch,
             yaw=yaw,
@@ -759,6 +762,7 @@ class ZEDYOLOServo(CameraWorker):
                 logger.exception("servo worker crashed: %s", e)
                 self.exc = e
             finally:
+                print("cleaning now")
                 self.cleanup()
                 self._run_event.clear()
                 if self._on_run_complete:
