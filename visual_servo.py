@@ -96,8 +96,10 @@ class ZEDYOLOServo(CameraWorker):
                 # the arm in a state the xarm_ros2 driver cannot take over from.
                 self.arm.clean_error()
                 self.arm.clean_warn()
+                self.arm.motion_enable(True)
                 self.arm.set_mode(1)
                 self.arm.set_state(0)
+                time.sleep(0.5)
                 self.arm.disconnect()
         except Exception:
             pass
