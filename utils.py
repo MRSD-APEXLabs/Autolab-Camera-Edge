@@ -235,3 +235,40 @@ def gripper_get_fsr(arm):
     fsr1 = (ret[3] << 8) | ret[4]
     fsr2 = (ret[5] << 8) | ret[6]
     return fsr1, fsr2
+
+
+def gripper_set(arm, value):
+    """
+    Send gripper target position using modbus.
+    Last two bytes are high_byte, low_byte of value.
+    """
+
+    value = int(value)
+    if value < 0:
+        value = 0
+    if value > 1000:
+        value = 1000
+
+    hi = (value >> 8) & 0xFF
+    lo = value & 0xFF
+
+    clear_errors(arm)
+
+    data = [
+        0x08, 0x10, 0x07, 0x00,
+        0x00, 0x02, 0x04,
+        0x00, 0x00,
+        hi, lo
+    ]
+
+    code, ret = arm.getset_tgpio_modbus_data(
+        data,
+        is_transparent_transmission=False
+    )
+
+    print(f"GRIPPER -> {value}: code={code}, ret={ret}")
+
+    if code != 0:
+        clear_errors(arm)
+
+    time.sleep(0.5)

@@ -101,6 +101,7 @@ class ZEDYOLOServo(CameraWorker):
                 self.arm.set_state(0)
                 time.sleep(0.5)
                 self.arm.disconnect()
+                print("getting in here")
         except Exception:
             pass
 
@@ -108,6 +109,52 @@ class ZEDYOLOServo(CameraWorker):
             cv2.destroyWindow("visual_servoing_right")
         except Exception:
             pass
+        
+    
+    def get_pose(self):
+        ret = self.arm.get_position(is_radian=False)
+        if not isinstance(ret, tuple) or len(ret) < 2 or ret[0] != 0:
+            raise RuntimeError(f"get_position failed: {ret}")
+        return ret[1][:6]  # x, y, z, roll, pitch, yaw (degrees)
+
+
+    def tool_axis_in_world(self, yaw_deg, axis):
+        """Rotate a unit tool-frame axis vector into world frame using yaw."""
+        yaw = np.radians(yaw_deg)
+        c, s = np.cos(yaw), np.sin(yaw)
+        if axis == "x":
+            return np.array([c, s, 0.0])
+        if axis == "y":
+            return np.array([-s, c, 0.0])
+        if axis == "z":
+            return np.array([0.0, 0.0, 1.0])
+        raise ValueError(f"Unknown axis: {axis}")
+
+
+    def nudge(self, signed_mm):
+        clear_errors(self.arm)
+        self.arm.motion_enable(True)
+        self.arm.set_mode(0)
+        self.arm.set_state(0)
+        
+        x, y, z, roll, pitch, yaw = self.get_pose()
+        direction = self.tool_axis_in_world(yaw, FINGER_TOOL_AXIS)
+        delta = direction * signed_mm
+        print(
+            f"           yaw={yaw:.1f}° → world delta: "
+            f"dx={delta[0]:+.2f} dy={delta[1]:+.2f} dz={delta[2]:+.2f}"
+        )
+
+        print("state:", self.arm.get_state(), "err:", self.arm.get_err_warn_code())
+        code = self.arm.set_position(
+            x=x + delta[0], y=y + delta[1], z=z + delta[2],
+            roll=roll, pitch=pitch, yaw=yaw,
+            speed=30, wait=True,
+        )
+        print(f"           move command result: code={code}")
+        if code != 0:
+            print(f"           move failed: code={code}")
+
 
     def execute_threshold_motion(self, obb=None):
         if self.debug:
@@ -227,67 +274,107 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             raise RuntimeError(f"xArm second threshold move failed with code {code}")
 
-        fsr1, fsr2, r1, r2 = None, None, None, None
+
+        gripper_set(self.arm, GRIPPER_CLOSE)
+        gripper_val = GRIPPER_CLOSE
+
         try:
-            samples = [gripper_get_fsr(self.arm) for _ in range(FSR_BASELINE_SAMPLES)]
-            valid = [(f1, f2) for f1, f2 in samples if f1 is not None]
-            base1 = int(sum(f1 for f1, _ in valid) / len(valid)) if valid else 0
-            base2 = int(sum(f2 for _, f2 in valid) / len(valid)) if valid else 0
-            logger.info("FSR baseline (%d samples): fsr1=%d fsr2=%d", len(valid), base1, base2)
+            for i in range(N_SAMPLES):
+                clear_errors(self.arm)
+                fsr1, fsr2 = gripper_get_fsr(self.arm)
+                if fsr1 is None:
+                    print(f"  [{i+1}/{N_SAMPLES}] FSR read failed")
+                    time.sleep(1.0 / LOOP_HZ)
+                    continue
 
-            yaw_rad = np.radians(grasp_yaw)
-            c, s = np.cos(yaw_rad), np.sin(yaw_rad)
-            world_dir = np.array([c, s, 0.0]) if FSR_FINGER_TOOL_AXIS == "x" else np.array([-s, c, 0.0])
+                print(f"  [{i+1}/{N_SAMPLES}] FSR1={fsr1:4d}  FSR2={fsr2:4d}")
 
-            for close_attempt in range(FSR_CLOSE_NUDGE_RETRIES + 1):
-                if close_attempt > 0:
-                    logger.info("Grasp threshold not met — gripper close+nudge (attempt %d/%d)",
-                                close_attempt, FSR_CLOSE_NUDGE_RETRIES)
-
-                gripper_close(self.arm)
-
-                # re-assert mode 0 so arm accepts position commands while gripper closes
-                self.arm.clean_error()
-                self.arm.motion_enable(True)
-                self.arm.set_mode(0)
-                self.arm.set_state(0)
-                time.sleep(0.2)
-
-                deadline = time.time() + 7.0
-                while time.time() < deadline:
-                    fsr1, fsr2 = gripper_get_fsr(self.arm)
-                    if fsr1 is None:
-                        time.sleep(0.1)
-                        continue
-
-                    r1 = fsr1 - base1
-                    r2 = fsr2 - base2
-                    logger.info("FSR during close: fsr1=%d fsr2=%d  (relative: r1=%d r2=%d)", fsr1, fsr2, r1, r2)
-                    delta = r1 - r2
-                    if abs(delta) > FSR_NUDGE_MIN_DELTA:
-                        signed_mm = -FSR_NUDGE_MM if delta > 0 else +FSR_NUDGE_MM
-                        ret = self.arm.get_position(is_radian=False)
-                        if isinstance(ret, tuple) and len(ret) >= 2 and ret[0] == 0:
-                            cx, cy, cz = ret[1][0], ret[1][1], ret[1][2]
-                            d = world_dir * signed_mm
-                            self.arm.set_position(
-                                x=cx + d[0], y=cy + d[1], z=cz + d[2],
-                                roll=roll, pitch=pitch, yaw=grasp_yaw,
-                                speed=20, wait=True,
-                            )
-                    else:
-                        time.sleep(0.1)
-
-                r1 = (fsr1 - base1) if fsr1 is not None else 0
-                r2 = (fsr2 - base2) if fsr2 is not None else 0
-                logger.info("Post-close FSR (attempt %d): fsr1=%s fsr2=%s  relative: r1=%d r2=%d",
-                            close_attempt, fsr1, fsr2, r1, r2)
-
-                if r1 > FSR_GRASP_THRESHOLD and r2 > FSR_GRASP_THRESHOLD:
-                    logger.info("Grasp threshold met on attempt %d", close_attempt)
+                # Stop condition: both fingers are pressing hard enough
+                if fsr1 > STOP_PRESSURE_1 and fsr2 > STOP_PRESSURE_2:
+                    print("           both FSRs > 500 — stopping and closing gripper")
+                    gripper_set(self.arm, gripper_val+30)
+                    # gripper_close(arm)
                     break
-                if close_attempt == FSR_CLOSE_NUDGE_RETRIES:
-                    logger.warning("Grasp threshold not met after %d attempts", FSR_CLOSE_NUDGE_RETRIES + 1)
+
+                # Nudge condition: one side is around 400 and the other is not
+                fsr1_hit = (fsr1 - TARGET_PRESSURE_1 > 0)
+                fsr2_hit = (fsr2 - TARGET_PRESSURE_2 > 0)
+
+                if fsr1_hit and not fsr2_hit:
+                    print(f"           FSR1 near {TARGET_PRESSURE_1} and FSR2 not — nudge toward FSR2")
+                    self.nudge(-NUDGE_MM)
+                    gripper_val += GRIPPER_STEP// 4
+                    gripper_set(self.arm, gripper_val)
+                elif fsr2_hit and not fsr1_hit:
+                    print(f"           FSR2 near {TARGET_PRESSURE_2} and FSR1 not — nudge toward FSR1")
+                    self.nudge(+NUDGE_MM)
+                    gripper_val += GRIPPER_STEP// 4
+                    gripper_set(self.arm, gripper_val)
+                else:
+                    print("           no action")
+                    gripper_val += GRIPPER_STEP
+                    if gripper_val > 350:
+                        gripper_val = 350
+                    gripper_set(self.arm, gripper_val)
+
+
+        # fsr1, fsr2 = None, None
+        # try:
+        #     yaw_rad = np.radians(grasp_yaw)
+        #     c, s = np.cos(yaw_rad), np.sin(yaw_rad)
+        #     world_dir = np.array([c, s, 0.0]) if FSR_FINGER_TOOL_AXIS == "x" else np.array([-s, c, 0.0])
+
+            
+
+            # for close_attempt in range(FSR_CLOSE_NUDGE_RETRIES + 1):
+            #     if close_attempt > 0:
+            #         logger.info("Grasp threshold not met — gripper close+nudge (attempt %d/%d)",
+            #                     close_attempt, FSR_CLOSE_NUDGE_RETRIES)
+
+            #     gripper_close(self.arm)
+
+            #     # re-assert mode 0 so arm accepts position commands while gripper closes
+            #     self.arm.clean_error()
+            #     self.arm.motion_enable(True)
+            #     self.arm.set_mode(0)
+            #     self.arm.set_state(0)
+            #     time.sleep(0.2)
+
+            #     deadline = time.time() + 7.0
+            #     while time.time() < deadline:
+            #         fsr1, fsr2 = gripper_get_fsr(self.arm)
+            #         if fsr1 is None:
+            #             time.sleep(0.1)
+            #             continue
+
+            #         r1 = fsr1 - base1
+            #         r2 = fsr2 - base2
+            #         logger.info("FSR during close: fsr1=%d fsr2=%d  (relative: r1=%d r2=%d)", fsr1, fsr2, r1, r2)
+            #         delta = r1 - r2
+            #         if abs(delta) > FSR_NUDGE_MIN_DELTA:
+            #             signed_mm = -FSR_NUDGE_MM if delta > 0 else +FSR_NUDGE_MM
+            #             ret = self.arm.get_position(is_radian=False)
+            #             if isinstance(ret, tuple) and len(ret) >= 2 and ret[0] == 0:
+            #                 cx, cy, cz = ret[1][0], ret[1][1], ret[1][2]
+            #                 d = world_dir * signed_mm
+            #                 self.arm.set_position(
+            #                     x=cx + d[0], y=cy + d[1], z=cz + d[2],
+            #                     roll=roll, pitch=pitch, yaw=grasp_yaw,
+            #                     speed=20, wait=True,
+            #                 )
+            #         else:
+            #             time.sleep(0.1)
+
+            #     r1 = (fsr1 - base1) if fsr1 is not None else 0
+            #     r2 = (fsr2 - base2) if fsr2 is not None else 0
+            #     logger.info("Post-close FSR (attempt %d): fsr1=%s fsr2=%s  relative: r1=%d r2=%d",
+            #                 close_attempt, fsr1, fsr2, r1, r2)
+
+            #     if r1 > FSR_GRASP_THRESHOLD and r2 > FSR_GRASP_THRESHOLD:
+            #         logger.info("Grasp threshold met on attempt %d", close_attempt)
+            #         break
+            #     if close_attempt == FSR_CLOSE_NUDGE_RETRIES:
+            #         logger.warning("Grasp threshold not met after %d attempts", FSR_CLOSE_NUDGE_RETRIES + 1)
         except Exception as e:
             logger.warning("gripper_close failed (no gripper?): %s", e)
 
@@ -317,7 +404,7 @@ class ZEDYOLOServo(CameraWorker):
         code = self.arm.set_position(
             x=x + dx,
             y=y + dy,
-            z=z + 100,
+            z=z+100,
             roll=roll,
             pitch=pitch,
             yaw=yaw,
@@ -327,7 +414,8 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             logger.warning("xArm fifth threshold move failed with code %d", code)
 
-        return r1, r2
+        # return r1, r2
+        return fsr1, fsr2
 
     def _lift_for_retry(self):
         self.arm.clean_error()
@@ -545,16 +633,16 @@ class ZEDYOLOServo(CameraWorker):
                         )
                         if not self.debug:
                             fsr1, fsr2 = self.execute_threshold_motion(obb=obb)
-                            if fsr1 is not None and (fsr1 > FSR_GRASP_THRESHOLD and fsr2 > FSR_GRASP_THRESHOLD):
+                            if fsr1 is not None and (fsr1 > STOP_PRESSURE_1 and fsr2 > STOP_PRESSURE_2):
                                 logger.info(
-                                    "Grasp check: fsr1=%d fsr2=%d > threshold=%d — succeeded",
-                                    fsr1, fsr2, FSR_GRASP_THRESHOLD,
+                                    "Grasp check: fsr1=%d fsr2=%d > th1=%d th2=%d — success",
+                                    fsr1, fsr2, STOP_PRESSURE_1, STOP_PRESSURE_2
                                 )
                                 grasp_succeeded = True
                             else:
                                 logger.warning(
-                                    "Grasp check: fsr1=%s fsr2=%s <= threshold=%d — failed (empty gripper)",
-                                    fsr1, fsr2, FSR_GRASP_THRESHOLD,
+                                    "Grasp check: fsr1=%s fsr2=%s <= threshold (th1=%d th2=%d) — failure",
+                                    fsr1, fsr2, STOP_PRESSURE_1, STOP_PRESSURE_2
                                 )
                             break
 
@@ -674,6 +762,7 @@ class ZEDYOLOServo(CameraWorker):
                 logger.exception("servo worker crashed: %s", e)
                 self.exc = e
             finally:
+                print("cleaning now")
                 self.cleanup()
                 self._run_event.clear()
                 if self._on_run_complete:

@@ -12,7 +12,7 @@ import time
 import numpy as np
 
 from xarm.wrapper import XArmAPI
-from utils import setup_gripper, gripper_get_fsr
+from utils import setup_gripper, gripper_get_fsr, gripper_open, clear_errors
 from config import ARM_IP
 
 # --- tunables ---
@@ -71,10 +71,12 @@ def main():
     print(f"Connecting to arm at {ARM_IP}...")
     arm = connect_arm()
     setup_gripper(arm)
+    # gripper_open(arm)
     print(f"Ready. FINGER_TOOL_AXIS={FINGER_TOOL_AXIS}, NUDGE_MM={NUDGE_MM}\n")
 
     try:
         for i in range(N_SAMPLES):
+            # clear_errors(arm)
             fsr1, fsr2 = gripper_get_fsr(arm)
             if fsr1 is None:
                 print(f"  [{i+1}/{N_SAMPLES}] FSR read failed")
