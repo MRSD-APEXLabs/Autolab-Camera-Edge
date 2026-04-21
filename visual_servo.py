@@ -108,7 +108,9 @@ class ZEDYOLOServo(CameraWorker):
                 c = self.arm.set_state(0)
                 logger.info("cleanup set_state(0) after mode 1: code=%s", c)
                 time.sleep(0.5)
-                self.arm.disconnect()
+                # NOTE: not disconnecting — disconnect() may reset arm mode,
+                # preventing xarm_ros2 from detecting mode 1 and reactivating controller
+                # self.arm.disconnect()
             except Exception as e:
                 logger.exception("cleanup arm reset failed: %s", e)
 
