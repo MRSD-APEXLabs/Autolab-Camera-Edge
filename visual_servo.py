@@ -94,14 +94,17 @@ class ZEDYOLOServo(CameraWorker):
                 # Use mode 1 (online trajectory planning) so MoveIt/ROS2 can
                 # reactivate its controller after servo exits.  Mode 0 leaves
                 # the arm in a state the xarm_ros2 driver cannot take over from.
+                time.sleep(0.3)  # let firmware exit mode 5 after stop_robot()
                 self.arm.clean_error()
                 self.arm.clean_warn()
+                self.arm.set_mode(0)
+                self.arm.set_state(0)
+                time.sleep(0.2)
                 self.arm.motion_enable(True)
                 self.arm.set_mode(1)
                 self.arm.set_state(0)
                 time.sleep(0.5)
                 self.arm.disconnect()
-                print("getting in here")
         except Exception:
             pass
 
