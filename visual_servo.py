@@ -243,7 +243,7 @@ class ZEDYOLOServo(CameraWorker):
         # vector by the same delta to keep it aligned in the world frame.
         # dx_nom, dy_nom = 94.3, -66.5
 
-        dx, dy = (92, -62) if abs(grasp_yaw - yaw) < 10 else (88, -55)
+        dx, dy = (90, -62) if abs(grasp_yaw - yaw) < 10 else (86, -55)
         z_grasp = -50 if abs(grasp_yaw - yaw) < 10 else z_grasp
         if y < 0:
             z_grasp=-15
