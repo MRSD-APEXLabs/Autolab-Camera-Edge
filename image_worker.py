@@ -46,11 +46,12 @@ class ZEDImageWorker(threading.Thread):
         logger.info("raw image worker starting (wrist + base)")
         while not self.stop_event.is_set():
             wrist_ok = False
-            with self.wrist_lock:
-                err = self.wrist_cam.grab(self.wrist_runtime)
-                if err == sl.ERROR_CODE.SUCCESS:
-                    self.wrist_cam.retrieve_image(self.wrist_mat, sl.VIEW.RIGHT)
-                    wrist_ok = True
+            if self.wrist_cam is not None:
+                with self.wrist_lock:
+                    err = self.wrist_cam.grab(self.wrist_runtime)
+                    if err == sl.ERROR_CODE.SUCCESS:
+                        self.wrist_cam.retrieve_image(self.wrist_mat, sl.VIEW.RIGHT)
+                        wrist_ok = True
 
             if wrist_ok:
                 frame = cv2.cvtColor(self.wrist_mat.get_data(), cv2.COLOR_BGRA2BGR)
@@ -66,11 +67,12 @@ class ZEDImageWorker(threading.Thread):
             time.sleep(0)  # yield so inspect/servo workers can acquire base_lock
 
             base_ok = False
-            with self.base_lock:
-                err = self.base_cam.grab(self.base_runtime)
-                if err == sl.ERROR_CODE.SUCCESS:
-                    self.base_cam.retrieve_image(self.base_mat, sl.VIEW.LEFT)
-                    base_ok = True
+            if self.base_cam is not None:
+                with self.base_lock:
+                    err = self.base_cam.grab(self.base_runtime)
+                    if err == sl.ERROR_CODE.SUCCESS:
+                        self.base_cam.retrieve_image(self.base_mat, sl.VIEW.LEFT)
+                        base_ok = True
 
             if base_ok:
                 frame = cv2.cvtColor(self.base_mat.get_data(), cv2.COLOR_BGRA2BGR)

@@ -62,20 +62,27 @@ class ModeManager:
             if not self._arm.connected:
                 raise RuntimeError(f"Failed to connect to xArm at {arm_ip}")
 
-        # Open wrist camera (cam1, no depth)
-        self._wrist_cam = sl.Camera()
+        log = logging.getLogger(__name__)
+
+        # Open wrist camera (cam1, no depth). Non-fatal: if it's not connected,
+        # servo mode is disabled but the rest of the app still runs.
+        self._wrist_cam = None
         self._wrist_lock = threading.Lock()
         wrist_init = sl.InitParameters()
         wrist_init.set_from_serial_number(SERIAL_CAM1)
         wrist_init.camera_resolution = sl.RESOLUTION.SVGA
         wrist_init.camera_fps = CAMERA_FPS
         wrist_init.depth_mode = sl.DEPTH_MODE.NONE
-        err = self._wrist_cam.open(wrist_init)
+        cam = sl.Camera()
+        err = cam.open(wrist_init)
         if err != sl.ERROR_CODE.SUCCESS:
-            raise RuntimeError(f"Wrist camera {SERIAL_CAM1} failed to open: {err}")
+            log.error("Wrist camera %s failed to open: %s — servo mode disabled", SERIAL_CAM1, err)
+        else:
+            self._wrist_cam = cam
 
-        # Open base camera (cam2, NEURAL depth)
-        self._base_cam = sl.Camera()
+        # Open base camera (cam2, NEURAL depth). Non-fatal: if it's not connected,
+        # inspect mode is disabled but the rest of the app still runs.
+        self._base_cam = None
         self._base_lock = threading.Lock()
         base_init = sl.InitParameters()
         base_init.set_from_serial_number(SERIAL_CAM2)
@@ -85,10 +92,15 @@ class ModeManager:
         base_init.coordinate_units = sl.UNIT.METER
         base_init.depth_minimum_distance = 0.2
         base_init.depth_maximum_distance = 1.7
-        err = self._base_cam.open(base_init)
+        cam = sl.Camera()
+        err = cam.open(base_init)
         if err != sl.ERROR_CODE.SUCCESS:
-            self._wrist_cam.close()
-            raise RuntimeError(f"Base camera {SERIAL_CAM2} failed to open: {err}")
+            log.error("Base camera %s failed to open: %s — inspect mode disabled", SERIAL_CAM2, err)
+        else:
+            self._base_cam = cam
+
+        if self._wrist_cam is None and self._base_cam is None:
+            raise RuntimeError("No ZED cameras could be opened")
 
         # Long-lived workers — started once, run for the lifetime of the process
         self._idle_worker = ZEDImageWorker(
@@ -98,20 +110,24 @@ class ModeManager:
         )
         self._idle_worker.start()
 
-        self._servo_worker = ZEDYOLOServo(
-            self._arm,
-            self._wrist_cam, self._wrist_lock,
-            stream_hub=stream_hub,
-            debug=debug,
-        )
-        self._servo_worker.start()
+        self._servo_worker = None
+        if self._wrist_cam is not None:
+            self._servo_worker = ZEDYOLOServo(
+                self._arm,
+                self._wrist_cam, self._wrist_lock,
+                stream_hub=stream_hub,
+                debug=debug,
+            )
+            self._servo_worker.start()
 
-        self._inspect_worker = ZEDInspectWorker(
-            self._base_cam, self._base_lock,
-            stream_hub=stream_hub,
-            debug=debug,
-        )
-        self._inspect_worker.start()
+        self._inspect_worker = None
+        if self._base_cam is not None:
+            self._inspect_worker = ZEDInspectWorker(
+                self._base_cam, self._base_lock,
+                stream_hub=stream_hub,
+                debug=debug,
+            )
+            self._inspect_worker.start()
 
     def _on_servo_complete(self):
         with self.lock:
@@ -121,9 +137,9 @@ class ModeManager:
     def stop(self):
         """Set mode to idle."""
         with self.lock:
-            if self.current_mode == "servo":
+            if self.current_mode == "servo" and self._servo_worker is not None:
                 self._servo_worker.abort_run()
-            elif self.current_mode == "inspect":
+            elif self.current_mode == "inspect" and self._inspect_worker is not None:
                 self._inspect_worker.abort_run()
             self.current_mode = "idle"
             self.stream_hub.set_active_mode("idle")
@@ -132,6 +148,10 @@ class ModeManager:
         mode = mode.lower().strip()
         if mode not in {"idle", "servo", "inspect"}:
             raise ValueError(f"Unsupported mode: {mode}")
+        if mode == "servo" and self._servo_worker is None:
+            raise ValueError("servo mode unavailable: wrist camera not connected")
+        if mode == "inspect" and self._inspect_worker is None:
+            raise ValueError("inspect mode unavailable: base camera not connected")
 
         with self.lock:
             if mode == self.current_mode:
@@ -139,9 +159,9 @@ class ModeManager:
                 return self.current_mode
 
             # Abort whatever is currently running
-            if self.current_mode == "servo":
+            if self.current_mode == "servo" and self._servo_worker is not None:
                 self._servo_worker.abort_run()
-            elif self.current_mode == "inspect":
+            elif self.current_mode == "inspect" and self._inspect_worker is not None:
                 self._inspect_worker.abort_run()
 
             if mode == "servo":
@@ -155,25 +175,34 @@ class ModeManager:
 
     def status(self):
         with self.lock:
-            return {"mode": self.current_mode, "worker_alive": True}
+            return {
+                "mode": self.current_mode,
+                "worker_alive": True,
+                "wrist_camera_connected": self._wrist_cam is not None,
+                "base_camera_connected": self._base_cam is not None,
+            }
 
     def shutdown(self):
         """Stop all workers and close cameras/arm."""
-        self._servo_worker.stop()
-        self._servo_worker.join(timeout=10.0)
+        if self._servo_worker is not None:
+            self._servo_worker.stop()
+            self._servo_worker.join(timeout=10.0)
 
-        self._inspect_worker.stop()
-        self._inspect_worker.join(timeout=10.0)
+        if self._inspect_worker is not None:
+            self._inspect_worker.stop()
+            self._inspect_worker.join(timeout=10.0)
 
         self._idle_worker.stop()
         self._idle_worker.join(timeout=5.0)
 
         try:
-            self._wrist_cam.close()
+            if self._wrist_cam is not None:
+                self._wrist_cam.close()
         except Exception as e:
             print(repr(e))
         try:
-            self._base_cam.close()
+            if self._base_cam is not None:
+                self._base_cam.close()
         except Exception as e:
             print(repr(e))
         try:
@@ -299,7 +328,10 @@ async def raw_stream_handler(ws, *args):
 async def main_async():
     global MANAGER
     MANAGER = ModeManager(ARM_IP, stream_hub=STREAM_HUB, debug=DEBUG)
-    MANAGER.switch_mode("inspect")
+    try:
+        MANAGER.switch_mode("inspect")
+    except ValueError as e:
+        logging.getLogger(__name__).warning("Startup mode 'inspect' unavailable: %s", e)
 
     control_server = websockets.serve(
         control_handler, "0.0.0.0", CONTROL_PORT, max_size=None
