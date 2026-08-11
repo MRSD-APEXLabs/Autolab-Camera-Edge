@@ -47,6 +47,13 @@ START_RPY_DEG = np.array([-180.0, 0.0, 0.0], dtype=np.float64)
 POINTCLOUD_STRIDE = 8
 STREAM_HZ = 15.0
 
+# XYZ crop applied to the inspect point cloud before encoding (camera frame, meters).
+# Z bounds mirror depth_minimum_distance/depth_maximum_distance above; X/Y trim the
+# field of view down to the workspace so we don't ship/encode background points.
+POINTCLOUD_X_BOUNDS = (-0.6, 0.6)
+POINTCLOUD_Y_BOUNDS = (-0.6, 0.6)
+POINTCLOUD_Z_BOUNDS = (0.2, 1.7)
+
 # 60 fps is required to avoid an intermittent MAX96712 dual-link init race on the
 # ZEDLinkDuo + Jetson Xavier stack. At 30 fps the GMSL2 link timing triggers a
 # race condition in the sl_max96712 driver when the second camera registers while
