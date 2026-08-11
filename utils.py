@@ -111,13 +111,18 @@ def best_obb_from_results(results):
 
 
 def all_obb_detections(results):
+    """Return all OBB detections as JSON-friendly dictionaries."""
     r0 = results[0]
     if r0.obb is None or len(r0.obb) == 0:
         return []
 
     xywhr = r0.obb.xywhr.detach().cpu().numpy()
     confs = r0.obb.conf.detach().cpu().numpy()
-    cls_ids = r0.obb.cls.detach().cpu().numpy() if r0.obb.cls is not None else np.full(len(confs), -1)
+    cls_ids = (
+        r0.obb.cls.detach().cpu().numpy()
+        if r0.obb.cls is not None
+        else np.full(len(confs), -1)
+    )
     names = getattr(r0, "names", {})
 
     dets = []
@@ -210,7 +215,7 @@ def gripper_close(arm):
     #if code != 0:
     #    print("Error opening gripper, clearing errors...")
     clear_errors(arm)
-    data = [0x08, 0x10, 0x07, 0x00, 0x00, 0x02, 0x04, 0x00, 0x00, 0x01, 0x5E]
+    data = [0x08, 0x10, 0x07, 0x00, 0x00, 0x02, 0x04, 0x00, 0x00, 0x01, 0x7c]
     code, ret = arm.getset_tgpio_modbus_data(data, is_transparent_transmission=False)
     print(f"CLOSE Gripper (158): code={code}, ret={ret}")
     if code != 0:
@@ -218,46 +223,52 @@ def gripper_close(arm):
         clear_errors(arm)
 
 
-def encode_jpeg_b64(frame: np.ndarray, quality: int = 80) -> str:
-    ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
-    if not ok:
-        raise RuntimeError("Failed to JPEG-encode frame")
-    return base64.b64encode(buf.tobytes()).decode("ascii")
+def gripper_get_fsr(arm):
+    # Read FC=0x03: device=0x08, start=0x0702 (FSR1), count=2 (FSR1+FSR2)
+    # 0x0702 = FSR1, 0x0703 = FSR2 — updated by Arduino each loop
+    data = [0x08, 0x03, 0x07, 0x02, 0x00, 0x02]
+    code, ret = arm.getset_tgpio_modbus_data(data, is_transparent_transmission=False)
+    print(f"GET Gripper FSR: code={code}, ret={ret}")
+    if code != 0 or ret is None or len(ret) < 7:
+        return None, None
+    # Response: [device, 0x03, byte_count, fsr1_hi, fsr1_lo, fsr2_hi, fsr2_lo, ...]
+    fsr1 = (ret[3] << 8) | ret[4]
+    fsr2 = (ret[5] << 8) | ret[6]
+    return fsr1, fsr2
 
 
-def encode_zlib_b64(arr: np.ndarray) -> Tuple[str, List[int], str]:
-    arr = np.asarray(arr)
-    payload = zlib.compress(arr.tobytes(), level=6)
-    return base64.b64encode(payload).decode("ascii"), list(arr.shape), str(arr.dtype)
+def gripper_set(arm, value):
+    """
+    Send gripper target position using modbus.
+    Last two bytes are high_byte, low_byte of value.
+    """
 
+    value = int(value)
+    if value < 0:
+        value = 0
+    if value > 1000:
+        value = 1000
 
-def all_obb_detections(results):
-    """Return all OBB detections as JSON-friendly dictionaries."""
-    r0 = results[0]
-    if r0.obb is None or len(r0.obb) == 0:
-        return []
+    hi = (value >> 8) & 0xFF
+    lo = value & 0xFF
 
-    xywhr = r0.obb.xywhr.detach().cpu().numpy()
-    confs = r0.obb.conf.detach().cpu().numpy()
-    cls_ids = (
-        r0.obb.cls.detach().cpu().numpy()
-        if r0.obb.cls is not None
-        else np.full(len(confs), -1)
+    clear_errors(arm)
+
+    data = [
+        0x08, 0x10, 0x07, 0x00,
+        0x00, 0x02, 0x04,
+        0x00, 0x00,
+        hi, lo
+    ]
+
+    code, ret = arm.getset_tgpio_modbus_data(
+        data,
+        is_transparent_transmission=False
     )
-    names = getattr(r0, "names", {})
 
-    dets = []
-    for i in range(len(confs)):
-        x, y, w, h, theta = map(float, xywhr[i])
-        cls_id = int(cls_ids[i])
-        dets.append(
-            {
-                "center": [x, y],
-                "size": [w, h],
-                "theta": theta,
-                "conf": float(confs[i]),
-                "cls_id": cls_id,
-                "name": str(names.get(cls_id, cls_id)),
-            }
-        )
-    return dets
+    print(f"GRIPPER -> {value}: code={code}, ret={ret}")
+
+    if code != 0:
+        clear_errors(arm)
+
+    time.sleep(0.5)

@@ -86,26 +86,84 @@ class ZEDYOLOServo(CameraWorker):
     def cleanup(self):
         try:
             self.stop_robot()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("stop robot failed: %s", e)
 
-        try:
-            if self.arm is not None:
+        if self.arm is not None:
+            try:
                 # Use mode 1 (online trajectory planning) so MoveIt/ROS2 can
                 # reactivate its controller after servo exits.  Mode 0 leaves
                 # the arm in a state the xarm_ros2 driver cannot take over from.
+                # c = self.arm.set_mode(0)
+                # logger.info("cleanup set_mode(0): code=%s", c)
+                # time.sleep(0.3)
                 self.arm.clean_error()
                 self.arm.clean_warn()
-                self.arm.set_mode(1)
-                self.arm.set_state(0)
-                self.arm.disconnect()
-        except Exception:
-            pass
+                # c = self.arm.set_state(0)
+                # logger.info("cleanup set_state(0) after mode 0: code=%s", c)
+                # time.sleep(0.2)
+                self.arm.motion_enable(True)
+                c = self.arm.set_mode(1)
+                logger.info("cleanup set_mode(1): code=%s", c)
+                c = self.arm.set_state(0)
+                logger.info("cleanup set_state(0) after mode 1: code=%s", c)
+                time.sleep(0.5)
+                # NOTE: not disconnecting — disconnect() may reset arm mode,
+                # preventing xarm_ros2 from detecting mode 1 and reactivating controller
+                #self.arm.disconnect()
+            except Exception as e:
+                logger.exception("cleanup arm reset failed: %s", e)
 
         try:
             cv2.destroyWindow("visual_servoing_right")
         except Exception:
             pass
+        
+    
+    def get_pose(self):
+        ret = self.arm.get_position(is_radian=False)
+        if not isinstance(ret, tuple) or len(ret) < 2 or ret[0] != 0:
+            raise RuntimeError(f"get_position failed: {ret}")
+        return ret[1][:6]  # x, y, z, roll, pitch, yaw (degrees)
+
+
+    def tool_axis_in_world(self, yaw_deg, axis):
+        """Rotate a unit tool-frame axis vector into world frame using yaw."""
+        yaw = np.radians(yaw_deg)
+        c, s = np.cos(yaw), np.sin(yaw)
+        if axis == "x":
+            return np.array([c, s, 0.0])
+        if axis == "y":
+            return np.array([-s, c, 0.0])
+        if axis == "z":
+            return np.array([0.0, 0.0, 1.0])
+        raise ValueError(f"Unknown axis: {axis}")
+
+
+    def nudge(self, signed_mm):
+        clear_errors(self.arm)
+        self.arm.motion_enable(True)
+        self.arm.set_mode(0)
+        self.arm.set_state(0)
+        
+        x, y, z, roll, pitch, yaw = self.get_pose()
+        direction = self.tool_axis_in_world(yaw, FINGER_TOOL_AXIS)
+        delta = direction * signed_mm
+        print(
+            f"           yaw={yaw:.1f}° → world delta: "
+            f"dx={delta[0]:+.2f} dy={delta[1]:+.2f} dz={delta[2]:+.2f}"
+        )
+
+        print("state:", self.arm.get_state(), "err:", self.arm.get_err_warn_code())
+        code = self.arm.set_position(
+            x=x + delta[0], y=y + delta[1], z=z + delta[2],
+            roll=roll, pitch=pitch, yaw=yaw,
+            speed=30, wait=True,
+        )
+        print(f"           move command result: code={code}")
+        if code != 0:
+            print(f"           move failed: code={code}")
+
 
     def execute_threshold_motion(self, obb=None):
         if self.debug:
@@ -129,6 +187,8 @@ class ZEDYOLOServo(CameraWorker):
             raise RuntimeError(f"xArm get_position failed with code {code}")
 
         x, y, z, roll, pitch, yaw = pose[:6]
+        roll = 179
+        pitch = 0
         logger.info(
             "Current pose: x=%.1f mm, y=%.1f mm, z=%.1f mm, roll=%.1f deg, pitch=%.1f deg, yaw=%.1f deg",
             x, y, z, roll, pitch, yaw,
@@ -183,10 +243,10 @@ class ZEDYOLOServo(CameraWorker):
         # vector by the same delta to keep it aligned in the world frame.
         # dx_nom, dy_nom = 94.3, -66.5
 
-        dx, dy = (92, -62) if abs(grasp_yaw - yaw) < 10 else (88, -55)
+        dx, dy = (90, -62) if abs(grasp_yaw - yaw) < 10 else (86, -55)
         z_grasp = -50 if abs(grasp_yaw - yaw) < 10 else z_grasp
         if y < 0:
-            z_grasp=-17
+            z_grasp=-15
         # yaw_delta_rad = np.radians(grasp_yaw - yaw)
         # cos_d, sin_d = np.cos(yaw_delta_rad), np.sin(yaw_delta_rad)
         # dx = cos_d * dx_nom - sin_d * dy_nom
@@ -223,11 +283,110 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             raise RuntimeError(f"xArm second threshold move failed with code {code}")
 
+
+        gripper_set(self.arm, GRIPPER_CLOSE)
+        gripper_val = GRIPPER_CLOSE
+
         try:
-            gripper_close(self.arm)
+            for i in range(N_SAMPLES):
+                clear_errors(self.arm)
+                fsr1, fsr2 = gripper_get_fsr(self.arm)
+                if fsr1 is None:
+                    print(f"  [{i+1}/{N_SAMPLES}] FSR read failed")
+                    time.sleep(1.0 / LOOP_HZ)
+                    continue
+
+                print(f"  [{i+1}/{N_SAMPLES}] FSR1={fsr1:4d}  FSR2={fsr2:4d}")
+
+                # Stop condition: both fingers are pressing hard enough
+                if fsr1 > STOP_PRESSURE_1 and fsr2 > STOP_PRESSURE_2:
+                    print("           both FSRs > 500 — stopping and closing gripper")
+                    gripper_set(self.arm, gripper_val+30)
+                    # gripper_close(arm)
+                    break
+
+                # Nudge condition: one side is around 400 and the other is not
+                fsr1_hit = (fsr1 - TARGET_PRESSURE_1 > 0)
+                fsr2_hit = (fsr2 - TARGET_PRESSURE_2 > 0)
+
+                if fsr1_hit and not fsr2_hit:
+                    print(f"           FSR1 near {TARGET_PRESSURE_1} and FSR2 not — nudge toward FSR2")
+                    self.nudge(-NUDGE_MM)
+                    gripper_val += GRIPPER_STEP// 4
+                    gripper_set(self.arm, gripper_val)
+                elif fsr2_hit and not fsr1_hit:
+                    print(f"           FSR2 near {TARGET_PRESSURE_2} and FSR1 not — nudge toward FSR1")
+                    self.nudge(+NUDGE_MM)
+                    gripper_val += GRIPPER_STEP// 4
+                    gripper_set(self.arm, gripper_val)
+                else:
+                    print("           no action")
+                    gripper_val += GRIPPER_STEP
+                    if gripper_val > 350:
+                        gripper_val = 350
+                    gripper_set(self.arm, gripper_val)
+
+
+        # fsr1, fsr2 = None, None
+        # try:
+        #     yaw_rad = np.radians(grasp_yaw)
+        #     c, s = np.cos(yaw_rad), np.sin(yaw_rad)
+        #     world_dir = np.array([c, s, 0.0]) if FSR_FINGER_TOOL_AXIS == "x" else np.array([-s, c, 0.0])
+
+            
+
+            # for close_attempt in range(FSR_CLOSE_NUDGE_RETRIES + 1):
+            #     if close_attempt > 0:
+            #         logger.info("Grasp threshold not met — gripper close+nudge (attempt %d/%d)",
+            #                     close_attempt, FSR_CLOSE_NUDGE_RETRIES)
+
+            #     gripper_close(self.arm)
+
+            #     # re-assert mode 0 so arm accepts position commands while gripper closes
+            #     self.arm.clean_error()
+            #     self.arm.motion_enable(True)
+            #     self.arm.set_mode(0)
+            #     self.arm.set_state(0)
+            #     time.sleep(0.2)
+
+            #     deadline = time.time() + 7.0
+            #     while time.time() < deadline:
+            #         fsr1, fsr2 = gripper_get_fsr(self.arm)
+            #         if fsr1 is None:
+            #             time.sleep(0.1)
+            #             continue
+
+            #         r1 = fsr1 - base1
+            #         r2 = fsr2 - base2
+            #         logger.info("FSR during close: fsr1=%d fsr2=%d  (relative: r1=%d r2=%d)", fsr1, fsr2, r1, r2)
+            #         delta = r1 - r2
+            #         if abs(delta) > FSR_NUDGE_MIN_DELTA:
+            #             signed_mm = -FSR_NUDGE_MM if delta > 0 else +FSR_NUDGE_MM
+            #             ret = self.arm.get_position(is_radian=False)
+            #             if isinstance(ret, tuple) and len(ret) >= 2 and ret[0] == 0:
+            #                 cx, cy, cz = ret[1][0], ret[1][1], ret[1][2]
+            #                 d = world_dir * signed_mm
+            #                 self.arm.set_position(
+            #                     x=cx + d[0], y=cy + d[1], z=cz + d[2],
+            #                     roll=roll, pitch=pitch, yaw=grasp_yaw,
+            #                     speed=20, wait=True,
+            #                 )
+            #         else:
+            #             time.sleep(0.1)
+
+            #     r1 = (fsr1 - base1) if fsr1 is not None else 0
+            #     r2 = (fsr2 - base2) if fsr2 is not None else 0
+            #     logger.info("Post-close FSR (attempt %d): fsr1=%s fsr2=%s  relative: r1=%d r2=%d",
+            #                 close_attempt, fsr1, fsr2, r1, r2)
+
+            #     if r1 > FSR_GRASP_THRESHOLD and r2 > FSR_GRASP_THRESHOLD:
+            #         logger.info("Grasp threshold met on attempt %d", close_attempt)
+            #         break
+            #     if close_attempt == FSR_CLOSE_NUDGE_RETRIES:
+            #         logger.warning("Grasp threshold not met after %d attempts", FSR_CLOSE_NUDGE_RETRIES + 1)
         except Exception as e:
             logger.warning("gripper_close failed (no gripper?): %s", e)
-        time.sleep(5)
+
 
         # Re-assert mode 0 before moving back up: gripper_close (or gripping a
         # physical object) can leave the arm in an error/mode-1 state.
@@ -254,7 +413,7 @@ class ZEDYOLOServo(CameraWorker):
         code = self.arm.set_position(
             x=x + dx,
             y=y + dy,
-            z=z,
+            z=z+100,
             roll=roll,
             pitch=pitch,
             yaw=yaw,
@@ -264,6 +423,32 @@ class ZEDYOLOServo(CameraWorker):
         if code != 0:
             logger.warning("xArm fifth threshold move failed with code %d", code)
 
+        # return r1, r2
+        return fsr1, fsr2
+
+    def _lift_for_retry(self):
+        self.arm.clean_error()
+        self.arm.clean_warn()
+        self.arm.motion_enable(True)
+        self.arm.set_mode(0)
+        self.arm.set_state(0)
+        time.sleep(0.3)
+
+        ret = self.arm.get_position(is_radian=False)
+        if not isinstance(ret, tuple) or len(ret) < 2 or ret[0] != 0:
+            raise RuntimeError(f"get_position failed during retry lift: {ret}")
+        x, y, z, roll, pitch, yaw = ret[1][:6]
+
+        code = self.arm.set_position(
+            x=x, y=y, z=z + GRASP_RETRY_LIFT_MM,
+            roll=roll, pitch=pitch, yaw=yaw,
+            speed=100, wait=True,
+        )
+        if code != 0:
+            raise RuntimeError(f"retry lift failed with code {code}")
+
+        gripper_open(self.arm)
+        logger.info("Retry lift complete: z %.1f → %.1f mm", z, z + GRASP_RETRY_LIFT_MM)
 
     def project_gripper_center(self, image_shape):
         H, W = image_shape[:2]
@@ -398,148 +583,210 @@ class ZEDYOLOServo(CameraWorker):
             gripper_open(self.arm)
 
         self.arm.connect()
+
+        _ret = self.arm.get_position(is_radian=False)
+        if isinstance(_ret, tuple) and len(_ret) >= 2 and _ret[0] == 0:
+            _initial_pose = _ret[1][:6]
+        else:
+            _initial_pose = None
+            logger.warning("Could not read initial pose at run start: %s", _ret)
+
         self.move_to_start_pose()
         self.enable_cartesian_velocity_mode()
 
         prev_time = time.time()
-        desired_area = None
 
-        while not self.should_stop():
-            right_frame = sl.Mat()
-            with self.grab_lock:
-                err = self.camera.grab(self.runtime)
-                if err == sl.ERROR_CODE.SUCCESS:
-                    self.camera.retrieve_image(right_frame, self.view)
+        for attempt in range(GRASP_MAX_RETRIES + 1):
+            desired_area = None
+            self.threshold_action_done = False
+            grasp_succeeded = False
 
-            if err != sl.ERROR_CODE.SUCCESS:
-                time.sleep(0.001)
-                continue
+            while not self.should_stop():
+                right_frame = sl.Mat()
+                with self.grab_lock:
+                    err = self.camera.grab(self.runtime)
+                    if err == sl.ERROR_CODE.SUCCESS:
+                        self.camera.retrieve_image(right_frame, self.view)
 
-            t0 = time.time()
-            frame = cv2.cvtColor(right_frame.get_data(), cv2.COLOR_BGRA2BGR)
-            t1 = time.time()
+                if err != sl.ERROR_CODE.SUCCESS:
+                    time.sleep(0.001)
+                    continue
 
-            results = self.model(frame, verbose=False)
-            t2 = time.time()
+                t0 = time.time()
+                frame = cv2.cvtColor(right_frame.get_data(), cv2.COLOR_BGRA2BGR)
+                t1 = time.time()
 
-            obb = best_obb_from_results(results)
-            target_uv = self.project_gripper_center(frame.shape)
-            detections = []
+                results = self.model(frame, verbose=False)
+                t2 = time.time()
 
-            if obb is not None:
-                detections.append(
-                    {
-                        "center": [float(obb[0]), float(obb[1])],
-                        "size": [float(obb[2]), float(obb[3])],
-                        "theta": float(obb[4]),
-                        "conf": float(obb[5]),
-                        "cls_id": int(obb[6]),
-                    }
-                )
+                obb = best_obb_from_results(results)
+                target_uv = self.project_gripper_center(frame.shape)
+                detections = []
 
-                area = obb[2] * obb[3]
+                if obb is not None:
+                    detections.append(
+                        {
+                            "center": [float(obb[0]), float(obb[1])],
+                            "size": [float(obb[2]), float(obb[3])],
+                            "theta": float(obb[4]),
+                            "conf": float(obb[5]),
+                            "cls_id": int(obb[6]),
+                        }
+                    )
 
-                if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
-                    self.threshold_action_done = True
+                    area = obb[2] * obb[3]
 
+                    if area > AREA_STOP_THRESHOLD and not self.threshold_action_done:
+                        self.threshold_action_done = True
+
+                        cv2.putText(
+                            frame,
+                            f"threshold reached: area={area:.0f}",
+                            (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 0, 255),
+                            2,
+                        )
+                        if not self.debug:
+                            fsr1, fsr2 = self.execute_threshold_motion(obb=obb)
+                            fsr1, fsr2 = gripper_get_fsr(self.arm)
+                            if fsr1 is not None and (fsr1 > STOP_PRESSURE_1 or fsr2 > STOP_PRESSURE_2):
+                                logger.info(
+                                    "Grasp check: fsr1=%d fsr2=%d > th1=%d th2=%d — success",
+                                    fsr1, fsr2, STOP_PRESSURE_1, STOP_PRESSURE_2
+                                )
+                                grasp_succeeded = True
+                            else:
+                                logger.warning(
+                                    "Grasp check: fsr1=%s fsr2=%s <= threshold (th1=%d th2=%d) — failure",
+                                    fsr1, fsr2, STOP_PRESSURE_1, STOP_PRESSURE_2
+                                )
+                            break
+
+                    if desired_area is None:
+                        desired_area = area
+
+                    Vc, (u, v, w, h, theta, conf, cls_id) = image_ibvs_command(
+                        obb=obb,
+                        target_uv=target_uv,
+                        desired_area=desired_area,
+                        desired_theta=0.0,
+                    )
+
+                    Vg = self.Ad_g_c @ Vc
+                    Vg[0] *= -1
+
+                    Vg[:3] = np.clip(Vg[:3], -0.08, 0.08)
+                    Vg[3:] = np.clip(Vg[3:], -0.40, 0.40)
+                    Vg[0] = np.clip(Vg[0], -0.02, 0.02)
+                    Vg[1] = np.clip(Vg[1], -0.02, 0.02)
+                    Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
+
+                    logger.debug("clamped Vg: vx=%+.3f, vy=%+.3f, vz=%+.3f", Vg[0], Vg[1], Vg[2])
+                    self.send_velocity_to_robot(Vg)
+
+                    draw_crosshair(
+                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                    )
                     cv2.putText(
                         frame,
-                        f"threshold reached: area={area:.0f}",
+                        "gripper target",
+                        (int(target_uv[0]) + 18, int(target_uv[1]) - 18),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
+                    cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
+                    draw_obb(frame, u, v, w, h, theta, color=(0, 255, 0), thickness=2)
+                    frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
+                    cv2.putText(
+                        frame,
+                        f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}",
+                        (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (0, 255, 0),
+                        2,
+                    )
+                else:
+                    self.stop_robot()
+                    draw_crosshair(
+                        frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                    )
+                    cv2.putText(
+                        frame,
+                        "no detection",
                         (20, 40),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         1.0,
                         (0, 0, 255),
                         2,
                     )
-                    if not self.debug:
-                        self.execute_threshold_motion(obb=obb)
-                        break
 
-                if desired_area is None:
-                    desired_area = area
+                t3 = time.time()
+                fps = 1.0 / max((t3 - prev_time), 1e-6)
+                prev_time = t3
 
-                Vc, (u, v, w, h, theta, conf, cls_id) = image_ibvs_command(
-                    obb=obb,
-                    target_uv=target_uv,
-                    desired_area=desired_area,
-                    desired_theta=0.0,
+                img_b64 = encode_jpeg_b64(frame)
+                self.stream_hub.publish(
+                    "servo",
+                    {
+                        "type": "servo_frame",
+                        "image_jpeg_b64": img_b64,
+                        "detections": detections,
+                        "target_uv": [float(target_uv[0]), float(target_uv[1])],
+                        "fps": float(fps),
+                        "capture_ms": float((t1 - t0) * 1000.0),
+                        "inference_ms": float((t2 - t1) * 1000.0),
+                        "post_ms": float((t3 - t2) * 1000.0),
+                    },
                 )
 
-                Vg = self.Ad_g_c @ Vc
-                Vg[0] *= -1
-
-                Vg[:3] = np.clip(Vg[:3], -0.08, 0.08)
-                Vg[3:] = np.clip(Vg[3:], -0.40, 0.40)
-                Vg[0] = np.clip(Vg[0], -0.02, 0.02)
-                Vg[1] = np.clip(Vg[1], -0.02, 0.02)
-                Vg[2] = -abs(np.clip(Vg[2], -0.02, 0.02))
-
-                logger.debug("clamped Vg: vx=%+.3f, vy=%+.3f, vz=%+.3f", Vg[0], Vg[1], Vg[2])
-                self.send_velocity_to_robot(Vg)
-
-                draw_crosshair(
-                    frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                logger.debug(
+                    "capture=%.1fms  inference=%.1fms  post=%.1fms  fps=%.1f",
+                    (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0, fps,
                 )
-                cv2.putText(
-                    frame,
-                    "gripper target",
-                    (int(target_uv[0]) + 18, int(target_uv[1]) - 18),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 255, 255),
-                    2,
-                )
-                cv2.circle(frame, (int(u), int(v)), 6, (0, 255, 0), -1)
-                draw_obb(frame, u, v, w, h, theta, color=(0, 255, 0), thickness=2)
-                frame = draw_velocity_arrow(frame, (u, v), Vc, scale=800.0)
-                cv2.putText(
-                    frame,
-                    f"cls={cls_id} conf={conf:.2f} theta={theta:.2f}",
-                    (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.0,
-                    (0, 255, 0),
-                    2,
-                )
+
+            # --- post-servo-loop: retry logic ---
+            if self.should_stop():
+                break
+
+            if grasp_succeeded or self.debug:
+                break
+
+            if attempt < GRASP_MAX_RETRIES:
+                logger.info("Grasp failed — retry %d/%d: lifting %.0f mm and re-running servo",
+                            attempt + 1, GRASP_MAX_RETRIES, GRASP_RETRY_LIFT_MM)
+                self._lift_for_retry()
+                self.enable_cartesian_velocity_mode()
             else:
-                self.stop_robot()
-                draw_crosshair(
-                    frame, target_uv, size=16, color=(0, 255, 255), thickness=2
+                logger.warning("Grasp failed after %d retries — giving up", GRASP_MAX_RETRIES)
+                break
+
+        if _initial_pose is not None and not self.debug:
+            try:
+                self.arm.clean_error()
+                self.arm.clean_warn()
+                self.arm.motion_enable(True)
+                self.arm.set_mode(0)
+                self.arm.set_state(0)
+                time.sleep(0.3)
+                ix, iy, iz, iroll, ipitch, iyaw = _initial_pose
+                code = self.arm.set_position(
+                    x=ix, y=iy, z=iz,
+                    roll=iroll, pitch=ipitch, yaw=iyaw,
+                    speed=100, wait=True,
                 )
-                cv2.putText(
-                    frame,
-                    "no detection",
-                    (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.0,
-                    (0, 0, 255),
-                    2,
-                )
-
-            t3 = time.time()
-            fps = 1.0 / max((t3 - prev_time), 1e-6)
-            prev_time = t3
-
-            img_b64 = encode_jpeg_b64(frame)
-            self.stream_hub.publish(
-                "servo",
-                {
-                    "type": "servo_frame",
-                    "image_jpeg_b64": img_b64,
-                    "detections": detections,
-                    "target_uv": [float(target_uv[0]), float(target_uv[1])],
-                    "fps": float(fps),
-                    "capture_ms": float((t1 - t0) * 1000.0),
-                    "inference_ms": float((t2 - t1) * 1000.0),
-                    "post_ms": float((t3 - t2) * 1000.0),
-                },
-            )
-
-            logger.debug(
-                "capture=%.1fms  inference=%.1fms  post=%.1fms  fps=%.1f",
-                (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0, fps,
-            )
-
+                if code != 0:
+                    logger.warning("Return to initial pose failed: code=%d", code)
+                else:
+                    logger.info("Returned to initial pose: x=%.1f y=%.1f z=%.1f", ix, iy, iz)
+            except Exception as e:
+                logger.exception("Return to initial pose raised: %s", e)
+        self.arm.set_mode(1)
+        print("Current Mode:", self.arm.mode)
         logger.info("servo run finished")
 
     def _run(self):
@@ -555,6 +802,7 @@ class ZEDYOLOServo(CameraWorker):
                 logger.exception("servo worker crashed: %s", e)
                 self.exc = e
             finally:
+                print("cleaning now")
                 self.cleanup()
                 self._run_event.clear()
                 if self._on_run_complete:
