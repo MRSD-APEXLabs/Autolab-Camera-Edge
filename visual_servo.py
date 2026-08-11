@@ -650,7 +650,8 @@ class ZEDYOLOServo(CameraWorker):
                         )
                         if not self.debug:
                             fsr1, fsr2 = self.execute_threshold_motion(obb=obb)
-                            if fsr1 is not None and (fsr1 > STOP_PRESSURE_1 and fsr2 > STOP_PRESSURE_2):
+                            fsr1, fsr2 = gripper_get_fsr(self.arm)
+                            if fsr1 is not None and (fsr1 > STOP_PRESSURE_1 or fsr2 > STOP_PRESSURE_2):
                                 logger.info(
                                     "Grasp check: fsr1=%d fsr2=%d > th1=%d th2=%d — success",
                                     fsr1, fsr2, STOP_PRESSURE_1, STOP_PRESSURE_2

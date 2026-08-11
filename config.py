@@ -21,7 +21,7 @@ RAW_STREAM_PORT = 8767
 AREA_STOP_THRESHOLD = 50000.0
 
 GRASP_MAX_RETRIES = 3
-GRASP_RETRY_LIFT_MM = 150.0
+GRASP_RETRY_LIFT_MM = 50.0
 # FSR_GRASP_THRESHOLD = 380             # FSR value (0–1023) above which grasp is considered successful
 # FSR_BASELINE_SAMPLES = 5              # readings averaged for pre-close baseline
 # FSR_CLOSE_NUDGE_RETRIES = 2          # re-close + nudge attempts if grasp threshold not met
