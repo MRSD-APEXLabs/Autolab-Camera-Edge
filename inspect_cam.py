@@ -392,15 +392,21 @@ class ZEDInspectWorker(CameraWorker):
                     self.camera.retrieve_image(self.frame_mat, sl.VIEW.LEFT)
                     self.camera.retrieve_measure(self.pc_mat, sl.MEASURE.XYZRGBA)
                     self.camera.retrieve_measure(self.depth_mat, sl.MEASURE.DEPTH)
+                    hw_timestamp_ns = self.camera.get_timestamp(
+                        sl.TIME_REFERENCE.IMAGE
+                    ).get_nanoseconds()
 
             if err != sl.ERROR_CODE.SUCCESS:
                 time.sleep(0.001)
                 continue
 
+            t_grab = time.time()
+
             frame = cv2.cvtColor(self.frame_mat.get_data(), cv2.COLOR_BGRA2BGR)
 
             results = self.model(frame, verbose=False)
             dets = all_obb_detections(results)
+            t_yolo = time.time()
 
             depth_img = self.depth_mat.get_data().astype(np.float32)
             dets_3d = []
@@ -438,6 +444,7 @@ class ZEDInspectWorker(CameraWorker):
                 dets_3d.append(det_3d)
 
             frame, tags = self.detect_apriltags(frame, depth_img)
+            t_apriltag = time.time()
 
             pc_raw = self.pc_mat.get_data()  # (H, W, 4)
             # Try applying a mask to the pc based on where we know april tags are.
@@ -451,17 +458,24 @@ class ZEDInspectWorker(CameraWorker):
             #     pc_raw[tag_mask > 0] = np.nan
 
             pc = pc_raw.reshape(-1, 4).astype(np.float32)
+            if POINTCLOUD_STRIDE > 1 and len(pc) > 0:
+                pc = pc[::POINTCLOUD_STRIDE]  # stride first — cheapest way to shrink the array
+            x_lo, x_hi = POINTCLOUD_X_BOUNDS
+            y_lo, y_hi = POINTCLOUD_Y_BOUNDS
+            z_lo, z_hi = POINTCLOUD_Z_BOUNDS
             valid = (
-                np.isfinite(pc[:, 0])
-                & np.isfinite(pc[:, 1])
-                & np.isfinite(pc[:, 2])
+                np.isfinite(pc[:, 0]) & np.isfinite(pc[:, 1]) & np.isfinite(pc[:, 2])
+                & (pc[:, 0] >= x_lo) & (pc[:, 0] <= x_hi)
+                & (pc[:, 1] >= y_lo) & (pc[:, 1] <= y_hi)
+                & (pc[:, 2] >= z_lo) & (pc[:, 2] <= z_hi)
             )
             pc = pc[valid]
-            if POINTCLOUD_STRIDE > 1 and len(pc) > 0:
-                pc = pc[::POINTCLOUD_STRIDE]
+            t_pc_filter = time.time()
 
             pc_b64, pc_shape, pc_dtype = encode_zlib_b64(pc)
+            t_pc_encode = time.time()
             img_b64 = encode_jpeg_b64(frame)
+            t_img_encode = time.time()
 
             fps = 1.0 / max((time.time() - start), 1e-6)
 
@@ -478,11 +492,20 @@ class ZEDInspectWorker(CameraWorker):
                     "pc_count": int(len(pc)),
                     "fps": float(fps),
                     "frame_frame": "zed_left_camera",
+                    "hw_timestamp_ns": int(hw_timestamp_ns),
                 },
             )
             logger.debug(
-                "fps=%.1f  wellplates=%d  apriltags=%d  pts=%d",
-                fps, len(dets_3d), len(tags), len(pc),
+                "fps=%.1f pts=%d | grab=%.1fms yolo=%.1fms pose+apriltag=%.1fms "
+                "pc_filter=%.1fms pc_encode=%.1fms img_encode=%.1fms total=%.1fms",
+                fps, len(pc),
+                (t_grab - start) * 1e3,
+                (t_yolo - t_grab) * 1e3,
+                (t_apriltag - t_yolo) * 1e3,
+                (t_pc_filter - t_apriltag) * 1e3,
+                (t_pc_encode - t_pc_filter) * 1e3,
+                (t_img_encode - t_pc_encode) * 1e3,
+                (time.time() - start) * 1e3,
             )
 
         logger.info("inspect run finished")
