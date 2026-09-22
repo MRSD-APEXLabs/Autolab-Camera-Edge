@@ -1,0 +1,13 @@
+[Unit]
+Description=Camera hub: ZED X / ZED X Nano stereo MJPEG server, one camera at a time (http://<host>:8090/)
+After=driver_zed_loader.service zed_x_daemon.service nvargus-daemon.service network.target
+
+[Service]
+User=autolab
+WorkingDirectory=/home/autolab/camera_hub
+ExecStart=/usr/bin/python3 /home/autolab/camera_hub/camera_hub.py --port 8090
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,2 +1,7 @@
 __pycache__/
 recordings/
+state.json
+state.json.tmp
+*.log
+*.pid
+.pytest_cache/
