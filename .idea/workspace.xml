@@ -1,0 +1,590 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="512fc017-deab-4208-bfc4-f2b523baa26b" name="Changes" comment="feat: write a consumer that can be used to consume from the new camera code">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cam_worker.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/dummy.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/example_client/js/angular.min.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/example_client/test.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/image_worker.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/inspect_cam.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/best_top.pt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/best_top.pt.04162026" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/best_top.pt.04202026" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/best_wrist.pt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/best_wrist.pt.04162026" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/record.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/streamhub.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_fsr_move.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_fsr_move_part2.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_fsr_move_part3.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_streamhub.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/visual_servo.bkp.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/visual_servo.py" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="jmuerto/zed-mini-integration" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RESET_MODE" value="HARD" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;jpuerto96&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:MRSD-APEXLabs/Autolab-Camera-Edge.git&quot;,
+    &quot;accountId&quot;: &quot;9a57e2d7-b41b-4f36-8018-3129cc30b325&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 8
+}</component>
+  <component name="ProjectId" id="3BmaXY10HAtv2e13i8oErUktHiR" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowPanel.toolwindow.highlight.mappings&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowPanel.toolwindow.highlight.symlinks&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowPanel.toolwindow.show.date&quot;: &quot;false&quot;,
+    &quot;WebServerToolWindowPanel.toolwindow.show.permissions&quot;: &quot;false&quot;,
+    &quot;WebServerToolWindowPanel.toolwindow.show.size&quot;: &quot;false&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;jmuerto/only__streaming&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;python.packages.toolwindow.project.migrated.to.right.top.v2&quot;: &quot;true&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.editor&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-4abd2a77f808-JavaScript-PY-262.10315.174" />
+        <option value="bundled-python-sdk-eff1e8def5f5-5bd6d13a2a75-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-262.10315.174" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="512fc017-deab-4208-bfc4-f2b523baa26b" name="Changes" comment="" />
+      <created>1775096739552</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1775096739552</updated>
+      <workItem from="1775096740681" duration="8868000" />
+      <workItem from="1775234051872" duration="2000" />
+      <workItem from="1775234059066" duration="9842000" />
+      <workItem from="1775576655996" duration="629000" />
+      <workItem from="1775578733200" duration="6806000" />
+      <workItem from="1775665852218" duration="3362000" />
+      <workItem from="1775705259346" duration="24000" />
+      <workItem from="1775750431870" duration="21242000" />
+      <workItem from="1776001915456" duration="59000" />
+      <workItem from="1776008326551" duration="6970000" />
+      <workItem from="1776024036268" duration="3870000" />
+      <workItem from="1776029350449" duration="609000" />
+      <workItem from="1776030376269" duration="1290000" />
+      <workItem from="1776032768328" duration="1019000" />
+      <workItem from="1776086593955" duration="4376000" />
+      <workItem from="1776174575458" duration="1431000" />
+      <workItem from="1776180414281" duration="144000" />
+      <workItem from="1776182263025" duration="1307000" />
+      <workItem from="1776193594243" duration="3743000" />
+      <workItem from="1776220385863" duration="110000" />
+      <workItem from="1776220592221" duration="1298000" />
+      <workItem from="1776262627428" duration="16918000" />
+      <workItem from="1776299206579" duration="3155000" />
+      <workItem from="1776395974788" duration="547000" />
+      <workItem from="1776534955878" duration="869000" />
+      <workItem from="1776543271729" duration="17189000" />
+      <workItem from="1776620039530" duration="875000" />
+      <workItem from="1776696591893" duration="3514000" />
+      <workItem from="1776785418224" duration="10381000" />
+      <workItem from="1776873654092" duration="598000" />
+      <workItem from="1776881352117" duration="3292000" />
+      <workItem from="1776892574939" duration="939000" />
+      <workItem from="1781969056333" duration="632000" />
+      <workItem from="1785879701992" duration="1965000" />
+      <workItem from="1786483980822" duration="5748000" />
+      <workItem from="1788700511267" duration="155000" />
+      <workItem from="1790008629800" duration="11856000" />
+      <workItem from="1790106327280" duration="114000" />
+      <workItem from="1790106456678" duration="656000" />
+    </task>
+    <task id="LOCAL-00051" summary="revert depth camera and use focal length/plate approach instead">
+      <option name="closed" value="true" />
+      <created>1776296459490</created>
+      <option name="number" value="00051" />
+      <option name="presentableId" value="LOCAL-00051" />
+      <option name="project" value="LOCAL" />
+      <updated>1776296459490</updated>
+    </task>
+    <task id="LOCAL-00052" summary="filter out confidence below 0.45">
+      <option name="closed" value="true" />
+      <created>1776299059349</created>
+      <option name="number" value="00052" />
+      <option name="presentableId" value="LOCAL-00052" />
+      <option name="project" value="LOCAL" />
+      <updated>1776299059349</updated>
+    </task>
+    <task id="LOCAL-00053" summary="filter out confidence below 0.45, remove tag filtering">
+      <option name="closed" value="true" />
+      <created>1776299138830</created>
+      <option name="number" value="00053" />
+      <option name="presentableId" value="LOCAL-00053" />
+      <option name="project" value="LOCAL" />
+      <updated>1776299138830</updated>
+    </task>
+    <task id="LOCAL-00054" summary="start inspect on launch">
+      <option name="closed" value="true" />
+      <created>1776535151221</created>
+      <option name="number" value="00054" />
+      <option name="presentableId" value="LOCAL-00054" />
+      <option name="project" value="LOCAL" />
+      <updated>1776535151221</updated>
+    </task>
+    <task id="LOCAL-00055" summary="config changes for grasp reattempts/fsr threshold">
+      <option name="closed" value="true" />
+      <created>1776606354563</created>
+      <option name="number" value="00055" />
+      <option name="presentableId" value="LOCAL-00055" />
+      <option name="project" value="LOCAL" />
+      <updated>1776606354563</updated>
+    </task>
+    <task id="LOCAL-00056" summary="consolidate duplicated functions. add function to grab the fsr information">
+      <option name="closed" value="true" />
+      <created>1776606460939</created>
+      <option name="number" value="00056" />
+      <option name="presentableId" value="LOCAL-00056" />
+      <option name="project" value="LOCAL" />
+      <updated>1776606460939</updated>
+    </task>
+    <task id="LOCAL-00057" summary="feat: test script to move gripper in direction of fsr making contact">
+      <option name="closed" value="true" />
+      <created>1776607885307</created>
+      <option name="number" value="00057" />
+      <option name="presentableId" value="LOCAL-00057" />
+      <option name="project" value="LOCAL" />
+      <updated>1776607885307</updated>
+    </task>
+    <task id="LOCAL-00058" summary="fix: flip signs for test_fsr_move">
+      <option name="closed" value="true" />
+      <created>1776610044172</created>
+      <option name="number" value="00058" />
+      <option name="presentableId" value="LOCAL-00058" />
+      <option name="project" value="LOCAL" />
+      <updated>1776610044172</updated>
+    </task>
+    <task id="LOCAL-00059" summary="feat: add basic retry logic">
+      <option name="closed" value="true" />
+      <created>1776610252046</created>
+      <option name="number" value="00059" />
+      <option name="presentableId" value="LOCAL-00059" />
+      <option name="project" value="LOCAL" />
+      <updated>1776610252046</updated>
+    </task>
+    <task id="LOCAL-00060" summary="sleep a bit longer after closing the gripper">
+      <option name="closed" value="true" />
+      <created>1776610411875</created>
+      <option name="number" value="00060" />
+      <option name="presentableId" value="LOCAL-00060" />
+      <option name="project" value="LOCAL" />
+      <updated>1776610411876</updated>
+    </task>
+    <task id="LOCAL-00061" summary="add nudging routine from test_fsr_move to visual servo">
+      <option name="closed" value="true" />
+      <created>1776611073892</created>
+      <option name="number" value="00061" />
+      <option name="presentableId" value="LOCAL-00061" />
+      <option name="project" value="LOCAL" />
+      <updated>1776611073892</updated>
+    </task>
+    <task id="LOCAL-00062" summary="nudge while closing rather than waiting for 3.5 to close then nudging">
+      <option name="closed" value="true" />
+      <created>1776611572259</created>
+      <option name="number" value="00062" />
+      <option name="presentableId" value="LOCAL-00062" />
+      <option name="project" value="LOCAL" />
+      <updated>1776611572259</updated>
+    </task>
+    <task id="LOCAL-00063" summary="both fsrs need to be above the grasp threshold, not just one">
+      <option name="closed" value="true" />
+      <created>1776611697317</created>
+      <option name="number" value="00063" />
+      <option name="presentableId" value="LOCAL-00063" />
+      <option name="project" value="LOCAL" />
+      <updated>1776611697317</updated>
+    </task>
+    <task id="LOCAL-00064" summary="get the fsr values after movements, not last one from nudge loop">
+      <option name="closed" value="true" />
+      <created>1776611900685</created>
+      <option name="number" value="00064" />
+      <option name="presentableId" value="LOCAL-00064" />
+      <option name="project" value="LOCAL" />
+      <updated>1776611900685</updated>
+    </task>
+    <task id="LOCAL-00065" summary="log change">
+      <option name="closed" value="true" />
+      <created>1776611961191</created>
+      <option name="number" value="00065" />
+      <option name="presentableId" value="LOCAL-00065" />
+      <option name="project" value="LOCAL" />
+      <updated>1776611961191</updated>
+    </task>
+    <task id="LOCAL-00066" summary="higher hz">
+      <option name="closed" value="true" />
+      <created>1776612103757</created>
+      <option name="number" value="00066" />
+      <option name="presentableId" value="LOCAL-00066" />
+      <option name="project" value="LOCAL" />
+      <updated>1776612103757</updated>
+    </task>
+    <task id="LOCAL-00067" summary="take average fsr value as it sits open so we can nudge based on the relative delta, not the base delta">
+      <option name="closed" value="true" />
+      <created>1776612440964</created>
+      <option name="number" value="00067" />
+      <option name="presentableId" value="LOCAL-00067" />
+      <option name="project" value="LOCAL" />
+      <updated>1776612440964</updated>
+    </task>
+    <task id="LOCAL-00068" summary="retry loop for closing/nudging">
+      <option name="closed" value="true" />
+      <created>1776613774644</created>
+      <option name="number" value="00068" />
+      <option name="presentableId" value="LOCAL-00068" />
+      <option name="project" value="LOCAL" />
+      <updated>1776613774644</updated>
+    </task>
+    <task id="LOCAL-00069" summary="fix grasp logic for nudge loop">
+      <option name="closed" value="true" />
+      <created>1776613992665</created>
+      <option name="number" value="00069" />
+      <option name="presentableId" value="LOCAL-00069" />
+      <option name="project" value="LOCAL" />
+      <updated>1776613992665</updated>
+    </task>
+    <task id="LOCAL-00070" summary="use relative values for grasp check">
+      <option name="closed" value="true" />
+      <created>1776614181220</created>
+      <option name="number" value="00070" />
+      <option name="presentableId" value="LOCAL-00070" />
+      <option name="project" value="LOCAL" />
+      <updated>1776614181220</updated>
+    </task>
+    <task id="LOCAL-00071" summary="close even more?">
+      <option name="closed" value="true" />
+      <created>1776614999680</created>
+      <option name="number" value="00071" />
+      <option name="presentableId" value="LOCAL-00071" />
+      <option name="project" value="LOCAL" />
+      <updated>1776614999680</updated>
+    </task>
+    <task id="LOCAL-00072" summary="return relative values after we've determined that the gripper is in our grasp">
+      <option name="closed" value="true" />
+      <created>1776615358298</created>
+      <option name="number" value="00072" />
+      <option name="presentableId" value="LOCAL-00072" />
+      <option name="project" value="LOCAL" />
+      <updated>1776615358298</updated>
+    </task>
+    <task id="LOCAL-00073" summary="update grasp threshold">
+      <option name="closed" value="true" />
+      <created>1776615403691</created>
+      <option name="number" value="00073" />
+      <option name="presentableId" value="LOCAL-00073" />
+      <option name="project" value="LOCAL" />
+      <updated>1776615403691</updated>
+    </task>
+    <task id="LOCAL-00074" summary="try to align the gripper to be parallel to avoid some of the errors we've been getting">
+      <option name="closed" value="true" />
+      <created>1776618665539</created>
+      <option name="number" value="00074" />
+      <option name="presentableId" value="LOCAL-00074" />
+      <option name="project" value="LOCAL" />
+      <updated>1776618665539</updated>
+    </task>
+    <task id="LOCAL-00075" summary="try to align the gripper to be parallel to avoid some of the errors we've been getting">
+      <option name="closed" value="true" />
+      <created>1776619686265</created>
+      <option name="number" value="00075" />
+      <option name="presentableId" value="LOCAL-00075" />
+      <option name="project" value="LOCAL" />
+      <updated>1776619686265</updated>
+    </task>
+    <task id="LOCAL-00076" summary="remove files">
+      <option name="closed" value="true" />
+      <created>1776620086057</created>
+      <option name="number" value="00076" />
+      <option name="presentableId" value="LOCAL-00076" />
+      <option name="project" value="LOCAL" />
+      <updated>1776620086057</updated>
+    </task>
+    <task id="LOCAL-00077" summary="remove files">
+      <option name="closed" value="true" />
+      <created>1776696610746</created>
+      <option name="number" value="00077" />
+      <option name="presentableId" value="LOCAL-00077" />
+      <option name="project" value="LOCAL" />
+      <updated>1776696610746</updated>
+    </task>
+    <task id="LOCAL-00078" summary="Set motion enable to true?">
+      <option name="closed" value="true" />
+      <created>1776789892077</created>
+      <option name="number" value="00078" />
+      <option name="presentableId" value="LOCAL-00078" />
+      <option name="project" value="LOCAL" />
+      <updated>1776789892077</updated>
+    </task>
+    <task id="LOCAL-00079" summary="new backup">
+      <option name="closed" value="true" />
+      <created>1776790172474</created>
+      <option name="number" value="00079" />
+      <option name="presentableId" value="LOCAL-00079" />
+      <option name="project" value="LOCAL" />
+      <updated>1776790172474</updated>
+    </task>
+    <task id="LOCAL-00080" summary="fix: try to reset the mode and state">
+      <option name="closed" value="true" />
+      <created>1776791005664</created>
+      <option name="number" value="00080" />
+      <option name="presentableId" value="LOCAL-00080" />
+      <option name="project" value="LOCAL" />
+      <updated>1776791005664</updated>
+    </task>
+    <task id="LOCAL-00081" summary="fix: try to reset the mode and state">
+      <option name="closed" value="true" />
+      <created>1776791498339</created>
+      <option name="number" value="00081" />
+      <option name="presentableId" value="LOCAL-00081" />
+      <option name="project" value="LOCAL" />
+      <updated>1776791498339</updated>
+    </task>
+    <task id="LOCAL-00082" summary="fix: logging">
+      <option name="closed" value="true" />
+      <created>1776791801467</created>
+      <option name="number" value="00082" />
+      <option name="presentableId" value="LOCAL-00082" />
+      <option name="project" value="LOCAL" />
+      <updated>1776791801467</updated>
+    </task>
+    <task id="LOCAL-00083" summary="fix: don't disconenct?">
+      <option name="closed" value="true" />
+      <created>1776792119182</created>
+      <option name="number" value="00083" />
+      <option name="presentableId" value="LOCAL-00083" />
+      <option name="project" value="LOCAL" />
+      <updated>1776792119182</updated>
+    </task>
+    <task id="LOCAL-00084" summary="feat: go back to the very initial position">
+      <option name="closed" value="true" />
+      <created>1776796002902</created>
+      <option name="number" value="00084" />
+      <option name="presentableId" value="LOCAL-00084" />
+      <option name="project" value="LOCAL" />
+      <updated>1776796002902</updated>
+    </task>
+    <task id="LOCAL-00085" summary="fix: checks for camera before trying to use it. this way we don't need both cameras to be able to launch the script for testing">
+      <option name="closed" value="true" />
+      <created>1786484832916</created>
+      <option name="number" value="00085" />
+      <option name="presentableId" value="LOCAL-00085" />
+      <option name="project" value="LOCAL" />
+      <updated>1786484832916</updated>
+    </task>
+    <task id="LOCAL-00086" summary="fix: apply filtering to pointcloud. add time prints for profiling">
+      <option name="closed" value="true" />
+      <created>1786485160824</created>
+      <option name="number" value="00086" />
+      <option name="presentableId" value="LOCAL-00086" />
+      <option name="project" value="LOCAL" />
+      <updated>1786485160824</updated>
+    </task>
+    <task id="LOCAL-00087" summary="fix: deprecate old code, update to new functionality">
+      <option name="closed" value="true" />
+      <created>1790016475074</created>
+      <option name="number" value="00087" />
+      <option name="presentableId" value="LOCAL-00087" />
+      <option name="project" value="LOCAL" />
+      <updated>1790016475074</updated>
+    </task>
+    <task id="LOCAL-00088" summary="fix: get base camera loaded properly">
+      <option name="closed" value="true" />
+      <created>1790018160287</created>
+      <option name="number" value="00088" />
+      <option name="presentableId" value="LOCAL-00088" />
+      <option name="project" value="LOCAL" />
+      <updated>1790018160287</updated>
+    </task>
+    <task id="LOCAL-00089" summary="fix: 30fps -&gt; 60fps (race condition)">
+      <option name="closed" value="true" />
+      <created>1790018637413</created>
+      <option name="number" value="00089" />
+      <option name="presentableId" value="LOCAL-00089" />
+      <option name="project" value="LOCAL" />
+      <updated>1790018637413</updated>
+    </task>
+    <task id="LOCAL-00090" summary="fix: fps tests">
+      <option name="closed" value="true" />
+      <created>1790021100777</created>
+      <option name="number" value="00090" />
+      <option name="presentableId" value="LOCAL-00090" />
+      <option name="project" value="LOCAL" />
+      <updated>1790021100777</updated>
+    </task>
+    <task id="LOCAL-00091" summary="fix: fps tests">
+      <option name="closed" value="true" />
+      <created>1790021157733</created>
+      <option name="number" value="00091" />
+      <option name="presentableId" value="LOCAL-00091" />
+      <option name="project" value="LOCAL" />
+      <updated>1790021157733</updated>
+    </task>
+    <task id="LOCAL-00092" summary="fix: fps tests">
+      <option name="closed" value="true" />
+      <created>1790021284087</created>
+      <option name="number" value="00092" />
+      <option name="presentableId" value="LOCAL-00092" />
+      <option name="project" value="LOCAL" />
+      <updated>1790021284087</updated>
+    </task>
+    <task id="LOCAL-00093" summary="fix: fps tests">
+      <option name="closed" value="true" />
+      <created>1790021377719</created>
+      <option name="number" value="00093" />
+      <option name="presentableId" value="LOCAL-00093" />
+      <option name="project" value="LOCAL" />
+      <updated>1790021377719</updated>
+    </task>
+    <task id="LOCAL-00094" summary="fix: fps tests">
+      <option name="closed" value="true" />
+      <created>1790021450383</created>
+      <option name="number" value="00094" />
+      <option name="presentableId" value="LOCAL-00094" />
+      <option name="project" value="LOCAL" />
+      <updated>1790021450383</updated>
+    </task>
+    <task id="LOCAL-00095" summary="fix: ws tests">
+      <option name="closed" value="true" />
+      <created>1790022108544</created>
+      <option name="number" value="00095" />
+      <option name="presentableId" value="LOCAL-00095" />
+      <option name="project" value="LOCAL" />
+      <updated>1790022108544</updated>
+    </task>
+    <task id="LOCAL-00096" summary="fix: stereo pairing tests">
+      <option name="closed" value="true" />
+      <created>1790022288866</created>
+      <option name="number" value="00096" />
+      <option name="presentableId" value="LOCAL-00096" />
+      <option name="project" value="LOCAL" />
+      <updated>1790022288866</updated>
+    </task>
+    <task id="LOCAL-00097" summary="fix: just wrist streaming to test">
+      <option name="closed" value="true" />
+      <created>1790022427429</created>
+      <option name="number" value="00097" />
+      <option name="presentableId" value="LOCAL-00097" />
+      <option name="project" value="LOCAL" />
+      <updated>1790022427429</updated>
+    </task>
+    <task id="LOCAL-00098" summary="fix: just wrist streaming to test">
+      <option name="closed" value="true" />
+      <created>1790022431684</created>
+      <option name="number" value="00098" />
+      <option name="presentableId" value="LOCAL-00098" />
+      <option name="project" value="LOCAL" />
+      <updated>1790022431684</updated>
+    </task>
+    <task id="LOCAL-00099" summary="feat: write a consumer that can be used to consume from the new camera code">
+      <option name="closed" value="true" />
+      <created>1790025134198</created>
+      <option name="number" value="00099" />
+      <option name="presentableId" value="LOCAL-00099" />
+      <option name="project" value="LOCAL" />
+      <updated>1790025134198</updated>
+    </task>
+    <option name="localTasksCounter" value="100" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="fix grasp logic for nudge loop" />
+    <MESSAGE value="use relative values for grasp check" />
+    <MESSAGE value="close even more?" />
+    <MESSAGE value="return relative values after we've determined that the gripper is in our grasp" />
+    <MESSAGE value="update grasp threshold" />
+    <MESSAGE value="try to align the gripper to be parallel to avoid some of the errors we've been getting" />
+    <MESSAGE value="remove files" />
+    <MESSAGE value="temp stash" />
+    <MESSAGE value="Set motion enable to true?" />
+    <MESSAGE value="new model" />
+    <MESSAGE value="new backup" />
+    <MESSAGE value="fix: try to reset the mode and state" />
+    <MESSAGE value="fix: logging" />
+    <MESSAGE value="fix: don't disconenct?" />
+    <MESSAGE value="feat: go back to the very initial position" />
+    <MESSAGE value="fix: checks for camera before trying to use it. this way we don't need both cameras to be able to launch the script for testing" />
+    <MESSAGE value="fix: apply filtering to pointcloud. add time prints for profiling" />
+    <MESSAGE value="fix: deprecate old code, update to new functionality" />
+    <MESSAGE value="fix: get base camera loaded properly" />
+    <MESSAGE value="fix: 30fps -&gt; 60fps (race condition)" />
+    <MESSAGE value="fix: fps tests" />
+    <MESSAGE value="fix: ws tests" />
+    <MESSAGE value="fix: stereo pairing tests" />
+    <MESSAGE value="fix: just wrist streaming to test" />
+    <MESSAGE value="feat: write a consumer that can be used to consume from the new camera code" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: write a consumer that can be used to consume from the new camera code" />
+  </component>
+</project>
